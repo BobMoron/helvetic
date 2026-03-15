@@ -37,6 +37,7 @@
           <ul class="nav navbar-nav">
             {% if user.is_authenticated %}
               <li><a href="{% url 'scale_list' %}">My devices</a></li>
+              <li><a href="{% url 'measurement_list' %}">Measurements</a></li>
               <li><a href="{% url 'profile' %}">My profile</a></li>
             {% endif %}
           </ul>

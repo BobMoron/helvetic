@@ -1,0 +1,55 @@
+{# -*- mode: html; indent-tabs-mode: nil; tab-width: 2 -*- #}
+{% extends "helvetic/base.html" %}
+{% block title %}Edit Scale — helvetic{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Edit Scale <small>{{ object.hw_address }}</small></h1>
+</div>
+
+<div class="row">
+  <div class="col-md-6">
+    <form method="post" class="form-horizontal">
+      {% csrf_token %}
+
+      <div class="form-group{% if form.unit.errors %} has-error{% endif %}">
+        <label class="col-sm-4 control-label">{{ form.unit.label }}</label>
+        <div class="col-sm-8">
+          {% for radio in form.unit %}
+          <div class="radio">
+            <label>{{ radio.tag }} {{ radio.choice_label }}</label>
+          </div>
+          {% endfor %}
+          {% for error in form.unit.errors %}
+          <span class="help-block text-danger">{{ error }}</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-group{% if form.users.errors %} has-error{% endif %}">
+        <label class="col-sm-4 control-label">{{ form.users.label }}</label>
+        <div class="col-sm-8">
+          {% for cb in form.users %}
+          <div class="checkbox">
+            <label>{{ cb.tag }} {{ cb.choice_label }}</label>
+          </div>
+          {% endfor %}
+          {% if not form.users.field.queryset %}
+          <span class="help-block">No user profiles available. <a href="{% url 'profile_edit' %}">Create your profile first.</a></span>
+          {% endif %}
+          {% for error in form.users.errors %}
+          <span class="help-block text-danger">{{ error }}</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="col-sm-offset-4 col-sm-8">
+          <button type="submit" class="btn btn-primary">Save</button>
+          <a href="{% url 'scale_list' %}" class="btn btn-default">Cancel</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

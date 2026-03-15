@@ -1,0 +1,74 @@
+{# -*- mode: html; indent-tabs-mode: nil; tab-width: 2 -*- #}
+{% extends "helvetic/base.html" %}
+{% block title %}Measurement Graph — helvetic{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Measurements <small><a href="{% url 'measurement_list' %}">View list</a> &middot; <a href="{% url 'measurement_export' %}">Export CSV</a></small></h1>
+</div>
+
+<div class="row">
+  <div class="col-md-12">
+    <h3>Weight (kg)</h3>
+    <canvas id="weightChart" height="80"></canvas>
+  </div>
+</div>
+<div class="row" style="margin-top: 30px;">
+  <div class="col-md-12">
+    <h3>Body fat (%)</h3>
+    <canvas id="fatChart" height="80"></canvas>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+fetch("{% url 'measurement_data' %}")
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    var commonOptions = {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 12 } }
+      }
+    };
+
+    new Chart(document.getElementById('weightChart'), {
+      type: 'line',
+      data: {
+        labels: data.labels,
+        datasets: [{
+          label: 'Weight (kg)',
+          data: data.weight,
+          borderColor: '#337ab7',
+          backgroundColor: 'rgba(51,122,183,0.1)',
+          fill: true,
+          tension: 0.2,
+          pointRadius: 2
+        }]
+      },
+      options: commonOptions
+    });
+
+    var fatData = data.body_fat.filter(function(v) { return v !== null; });
+    var fatLabels = data.labels.filter(function(_, i) { return data.body_fat[i] !== null; });
+
+    new Chart(document.getElementById('fatChart'), {
+      type: 'line',
+      data: {
+        labels: fatLabels,
+        datasets: [{
+          label: 'Body fat (%)',
+          data: fatData,
+          borderColor: '#d9534f',
+          backgroundColor: 'rgba(217,83,79,0.1)',
+          fill: true,
+          tension: 0.2,
+          pointRadius: 2
+        }]
+      },
+      options: commonOptions
+    });
+  });
+</script>
+{% endblock %}

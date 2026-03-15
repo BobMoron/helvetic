@@ -1,0 +1,53 @@
+{# -*- mode: html; indent-tabs-mode: nil; tab-width: 2 -*- #}
+{% extends "helvetic/base.html" %}
+{% block title %}Measurements — helvetic{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Measurements <small><a href="{% url 'measurement_graph' %}">View graph</a> &middot; <a href="{% url 'measurement_export' %}">Export CSV</a></small></h1>
+</div>
+
+{% if object_list %}
+<table class="table table-striped table-hover">
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Weight (kg)</th>
+      <th>Body fat (%)</th>
+      <th>Scale</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for m in object_list %}
+    <tr>
+      <td>{{ m.when|date:"Y-m-d H:i" }}</td>
+      <td>{{ m.weight_kg }}</td>
+      <td>{% if m.body_fat %}{{ m.body_fat }}{% else %}&mdash;{% endif %}</td>
+      <td>{{ m.scale.hw_address }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if is_paginated %}
+<nav>
+  <ul class="pagination">
+    {% if page_obj.has_previous %}
+    <li><a href="?page={{ page_obj.previous_page_number }}">&laquo;</a></li>
+    {% else %}
+    <li class="disabled"><span>&laquo;</span></li>
+    {% endif %}
+    <li class="active"><span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+    {% if page_obj.has_next %}
+    <li><a href="?page={{ page_obj.next_page_number }}">&raquo;</a></li>
+    {% else %}
+    <li class="disabled"><span>&raquo;</span></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<p class="text-muted">No measurements recorded yet.</p>
+{% endif %}
+{% endblock %}

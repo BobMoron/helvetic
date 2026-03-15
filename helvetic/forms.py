@@ -2,7 +2,7 @@
 from django import forms
 from django.core.validators import RegexValidator
 
-from .models import UserProfile
+from .models import Scale, UserProfile
 
 _ascii_validator = RegexValidator(
   r'^[A-Za-z0-9 ]+$',
@@ -39,3 +39,21 @@ class UserProfileForm(forms.ModelForm):
     if commit:
       instance.save()
     return instance
+
+
+class ScaleConfigForm(forms.ModelForm):
+  users = forms.ModelMultipleChoiceField(
+    queryset=UserProfile.objects.none(),
+    required=False,
+    widget=forms.CheckboxSelectMultiple,
+    label='Scale users',
+  )
+
+  class Meta:
+    model = Scale
+    fields = ['unit', 'users']
+
+  def __init__(self, *args, owner=None, **kwargs):
+    super().__init__(*args, **kwargs)
+    if owner is not None:
+      self.fields['users'].queryset = UserProfile.objects.filter(user=owner)

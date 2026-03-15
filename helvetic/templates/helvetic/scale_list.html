@@ -1,17 +1,44 @@
 {# -*- mode: html; indent-tabs-mode: nil; tab-width: 2 -*- #}
 {% extends "helvetic/base.html" %}
+{% block title %}My Devices — helvetic{% endblock %}
 
 {% block content %}
-{# TODO: make this a proper table #}
-<p><a href="{% url 'register_index' %}">Add new Aria</a></p>
+<div class="page-header">
+  <h1>My Devices</h1>
+</div>
 
-	{% if object_list %}
-	  <ul>
-	  {% for scale in object_list %}
-	    <li>{{ scale.hw_address }} | {{ scale.ssid }}</li>
-	  {% endfor %}
-	  </ul>
-	{% else %}
-		<p>There are no scales associated with your account.</p>
-	{% endif %}
+<p><a href="{% url 'register_index' %}" class="btn btn-default">Add new Aria</a></p>
+
+{% if object_list %}
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>MAC address</th>
+      <th>SSID</th>
+      <th>Firmware</th>
+      <th>Battery</th>
+      <th>Units</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for scale in object_list %}
+    <tr>
+      <td>{{ scale.hw_address }}</td>
+      <td>{{ scale.ssid }}</td>
+      <td>{% if scale.fw_version %}{{ scale.fw_version }}{% else %}&mdash;{% endif %}</td>
+      <td>{% if scale.battery_percent is not None %}{{ scale.battery_percent }}%{% else %}&mdash;{% endif %}</td>
+      <td>{{ scale.get_unit_display }}</td>
+      <td>
+        {% if scale.owner == request.user %}
+        <a href="{% url 'scale_edit' scale.pk %}" class="btn btn-xs btn-default">Edit</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="text-muted">No scales associated with your account.</p>
+{% endif %}
 {% endblock %}
