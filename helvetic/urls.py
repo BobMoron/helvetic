@@ -1,6 +1,6 @@
 # -*- mode: python; indent-tabs-mode: nil; tab-width: 2 -*-
 from django.urls import re_path
-from .views import aria_api, measurements, profile, registration, webui
+from .views import aria_api, measurements, profile, registration, usermgmt, webui
 
 urlpatterns = [
   re_path(
@@ -85,6 +85,24 @@ urlpatterns = [
     r'^measurements/export\.csv$',
     webui.MeasurementExportView.as_view(),
     name='measurement_export'
+  ),
+
+  re_path(
+    r'^users/$',
+    usermgmt.UserListView.as_view(),
+    name='user_list'
+  ),
+
+  re_path(
+    r'^users/create/$',
+    usermgmt.UserCreateView.as_view(),
+    name='user_create'
+  ),
+
+  re_path(
+    r'^users/(?P<pk>\d+)/deactivate/$',
+    usermgmt.UserDeactivateView.as_view(),
+    name='user_deactivate'
   ),
 
   re_path(

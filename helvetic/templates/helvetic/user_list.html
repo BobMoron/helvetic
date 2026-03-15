@@ -1,0 +1,31 @@
+{% extends "helvetic/base.html" %}
+{% block title %}Users — helvetic{% endblock %}
+{% block content %}
+<h2>Users</h2>
+<a href="{% url 'user_create' %}" class="btn btn-primary btn-sm" style="margin-bottom:1em">Create user</a>
+<table class="table table-striped">
+  <thead>
+    <tr><th>Username</th><th>Staff</th><th>Active</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}</td>
+      <td>{% if u.is_staff %}Yes{% endif %}</td>
+      <td>{% if u.is_active %}Yes{% else %}<em>Inactive</em>{% endif %}</td>
+      <td>
+        {% if u.is_active and u != request.user %}
+        <form method="post" action="{% url 'user_deactivate' u.pk %}" style="display:inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger btn-xs"
+            onclick="return confirm('Deactivate {{ u.username }}?')">Deactivate</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="4">No users found.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

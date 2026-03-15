@@ -39,6 +39,9 @@
               <li><a href="{% url 'scale_list' %}">My devices</a></li>
               <li><a href="{% url 'measurement_list' %}">Measurements</a></li>
               <li><a href="{% url 'profile' %}">My profile</a></li>
+              {% if user.is_staff %}
+              <li><a href="{% url 'user_list' %}">Users</a></li>
+              {% endif %}
             {% endif %}
           </ul>
           <ul class="nav navbar-nav navbar-right">

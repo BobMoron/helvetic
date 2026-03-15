@@ -712,6 +712,133 @@ class RegistrationStatusViewTest(TestCase):
         self.assertEqual(resp.status_code, 200)
 
 
+# ---------------------------------------------------------------------------
+# Phase 3: User management
+# ---------------------------------------------------------------------------
+
+class UserListViewTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.staff = make_user(username='staff', password='pass')
+        self.staff.is_staff = True
+        self.staff.save()
+        self.regular = make_user(username='regular', password='pass')
+        self.url = reverse('user_list')
+
+    def test_unauthenticated_redirects_to_login(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/accounts/login', resp['Location'])
+
+    def test_non_staff_gets_403(self):
+        self.client.force_login(self.regular)
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_staff_gets_200(self):
+        self.client.force_login(self.staff)
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_lists_all_users(self):
+        self.client.force_login(self.staff)
+        resp = self.client.get(self.url)
+        self.assertContains(resp, 'staff')
+        self.assertContains(resp, 'regular')
+
+
+class UserCreateViewTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.staff = make_user(username='staff', password='pass')
+        self.staff.is_staff = True
+        self.staff.save()
+        self.url = reverse('user_create')
+
+    def test_non_staff_gets_403(self):
+        regular = make_user(username='regular')
+        self.client.force_login(regular)
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_get_returns_200(self):
+        self.client.force_login(self.staff)
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_valid_post_creates_user(self):
+        self.client.force_login(self.staff)
+        resp = self.client.post(self.url, {
+            'username': 'newuser',
+            'password': 'secret123',
+            'is_staff': '',
+        })
+        self.assertRedirects(resp, reverse('user_list'))
+        self.assertTrue(User.objects.filter(username='newuser').exists())
+
+    def test_password_is_hashed(self):
+        self.client.force_login(self.staff)
+        self.client.post(self.url, {
+            'username': 'newuser',
+            'password': 'secret123',
+            'is_staff': '',
+        })
+        user = User.objects.get(username='newuser')
+        self.assertTrue(user.check_password('secret123'))
+        self.assertNotEqual(user.password, 'secret123')
+
+    def test_duplicate_username_rerenders_form(self):
+        make_user(username='existing')
+        self.client.force_login(self.staff)
+        resp = self.client.post(self.url, {
+            'username': 'existing',
+            'password': 'secret123',
+            'is_staff': '',
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(User.objects.filter(username='existing').count(), 1)
+
+
+class UserDeactivateViewTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.staff = make_user(username='staff', password='pass')
+        self.staff.is_staff = True
+        self.staff.save()
+        self.target = make_user(username='target')
+
+    def _url(self, pk):
+        return reverse('user_deactivate', args=[pk])
+
+    def test_non_staff_gets_403(self):
+        regular = make_user(username='regular')
+        self.client.force_login(regular)
+        resp = self.client.post(self._url(self.target.pk))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_staff_deactivates_user(self):
+        self.client.force_login(self.staff)
+        resp = self.client.post(self._url(self.target.pk))
+        self.assertRedirects(resp, reverse('user_list'))
+        self.target.refresh_from_db()
+        self.assertFalse(self.target.is_active)
+
+    def test_cannot_deactivate_self(self):
+        self.client.force_login(self.staff)
+        resp = self.client.post(self._url(self.staff.pk))
+        self.assertEqual(resp.status_code, 403)
+        self.staff.refresh_from_db()
+        self.assertTrue(self.staff.is_active)
+
+    def test_get_not_allowed(self):
+        self.client.force_login(self.staff)
+        resp = self.client.get(self._url(self.target.pk))
+        self.assertEqual(resp.status_code, 405)
+
+
 class CurlRegistrationViewSessionTest(TestCase):
 
     def setUp(self):

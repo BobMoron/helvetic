@@ -1,5 +1,6 @@
 # -*- mode: python; indent-tabs-mode: nil; tab-width: 2 -*-
 from django import forms
+from django.contrib.auth.models import User
 from django.core.validators import RegexValidator
 
 from .models import Scale, UserProfile
@@ -57,3 +58,25 @@ class ScaleConfigForm(forms.ModelForm):
     super().__init__(*args, **kwargs)
     if owner is not None:
       self.fields['users'].queryset = UserProfile.objects.filter(user=owner)
+
+
+class UserCreateForm(forms.Form):
+  username = forms.CharField(max_length=150)
+  password = forms.CharField(widget=forms.PasswordInput)
+  is_staff = forms.BooleanField(required=False, label='Staff (can manage users)')
+
+  def clean_username(self):
+    username = self.cleaned_data['username']
+    if User.objects.filter(username=username).exists():
+      raise forms.ValidationError('A user with that username already exists.')
+    return username
+
+  def save(self):
+    data = self.cleaned_data
+    user = User.objects.create_user(
+      username=data['username'],
+      is_staff=data['is_staff'],
+    )
+    user.set_password(data['password'])
+    user.save()
+    return user
