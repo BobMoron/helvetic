@@ -6,6 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Helvetic is a Django app that replaces the FitBit Aria scale's cloud service. It intercepts scale communication (requires local DNS spoofing to redirect `aria.fitbit.com`) and stores weight/body-fat measurements locally. Implements the FitBit Aria protocol v3 (binary, CRC-16-CCITT/xmodem).
 
+## Development Rules
+
+- **Tests are part of done.** Every feature implementation must include tests. Write them in the same step, run them before shipping. Never ship a feature and add tests later.
+- Always use the `env/` virtualenv — never system Python.
+
 ## Commands
 
 All Django commands run from `helv_test/` using the venv:
