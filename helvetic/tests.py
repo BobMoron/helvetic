@@ -351,7 +351,7 @@ class IndexViewTest(TestCase):
         self.assertIn('/accounts/login', resp['Location'])
 
     def test_authenticated_returns_200(self):
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 200)
 
@@ -369,7 +369,7 @@ class ScaleListViewTest(TestCase):
         self.assertIn('/accounts/login', resp['Location'])
 
     def test_authenticated_returns_200(self):
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 200)
 
@@ -387,7 +387,7 @@ class RegistrationViewTest(TestCase):
         self.assertIn('/accounts/login', resp['Location'])
 
     def test_authenticated_returns_200(self):
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 200)
 
@@ -409,13 +409,13 @@ class ProfileViewTest(TestCase):
         self.assertIn('/accounts/login', resp['Location'])
 
     def test_no_profile_redirects_to_edit(self):
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         resp = self.client.get(self.url)
         self.assertRedirects(resp, reverse('profile_edit'))
 
     def test_with_profile_returns_200(self):
         make_profile(self.user)
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Alice')
@@ -440,12 +440,12 @@ class ProfileEditViewTest(TestCase):
         self.assertIn('/accounts/login', resp['Location'])
 
     def test_get_returns_200(self):
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 200)
 
     def test_post_creates_profile(self):
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         resp = self.client.post(self.url, self.valid_data)
         self.assertRedirects(resp, reverse('profile'))
         profile = UserProfile.objects.get(user=self.user)
@@ -454,7 +454,7 @@ class ProfileEditViewTest(TestCase):
 
     def test_post_updates_existing_profile(self):
         make_profile(self.user, short_name='OldName', height=1600)
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         self.client.post(self.url, self.valid_data)
         profile = UserProfile.objects.get(user=self.user)
         self.assertEqual(profile.short_name, 'Alice')
@@ -462,7 +462,7 @@ class ProfileEditViewTest(TestCase):
         self.assertEqual(UserProfile.objects.filter(user=self.user).count(), 1)
 
     def test_invalid_short_name_rerenders_form(self):
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         data = {**self.valid_data, 'short_name': 'Alice!@#'}
         resp = self.client.post(self.url, data)
         self.assertEqual(resp.status_code, 200)
@@ -488,7 +488,7 @@ class MeasurementExportViewTest(TestCase):
         self.assertIn('/accounts/login', resp['Location'])
 
     def test_empty_export_returns_header_only(self):
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp['Content-Type'], 'text/csv')
@@ -500,7 +500,7 @@ class MeasurementExportViewTest(TestCase):
         Measurement.objects.create(
             user=self.user, scale=self.scale,
             when=when, weight=70500, body_fat=Decimal('18.250'))
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         resp = self.client.get(self.url)
         content = resp.content.decode()
         self.assertIn('70.5', content)
@@ -513,7 +513,7 @@ class MeasurementExportViewTest(TestCase):
             user=other, scale=self.scale,
             when=datetime(2026, 1, 1, tzinfo=timezone.utc),
             weight=80000)
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         resp = self.client.get(self.url)
         lines = resp.content.decode().strip().splitlines()
         self.assertEqual(len(lines), 1)  # header only
@@ -536,7 +536,7 @@ class MeasurementListViewTest(TestCase):
         self.assertIn('/accounts/login', resp['Location'])
 
     def test_authenticated_empty_returns_200(self):
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 200)
 
@@ -554,7 +554,7 @@ class MeasurementGraphViewTest(TestCase):
         self.assertIn('/accounts/login', resp['Location'])
 
     def test_authenticated_returns_200(self):
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 200)
 
@@ -573,7 +573,7 @@ class MeasurementDataViewTest(TestCase):
         self.assertEqual(resp.status_code, 302)
 
     def test_empty_returns_correct_json_structure(self):
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -587,7 +587,7 @@ class MeasurementDataViewTest(TestCase):
             user=self.user, scale=self.scale,
             when=datetime(2026, 1, 1, tzinfo=timezone.utc),
             weight=70500)
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         data = self.client.get(self.url).json()
         self.assertEqual(data['weight'], [70.5])
 
@@ -596,7 +596,7 @@ class MeasurementDataViewTest(TestCase):
             user=self.user, scale=self.scale,
             when=datetime(2026, 1, 1, tzinfo=timezone.utc),
             weight=70000, body_fat=None)
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         data = self.client.get(self.url).json()
         self.assertIsNone(data['body_fat'][0])
 
@@ -606,7 +606,7 @@ class MeasurementDataViewTest(TestCase):
             user=other, scale=self.scale,
             when=datetime(2026, 1, 1, tzinfo=timezone.utc),
             weight=80000)
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         data = self.client.get(self.url).json()
         self.assertEqual(data['labels'], [])
 
@@ -630,30 +630,30 @@ class ScaleEditViewTest(TestCase):
         self.assertIn('/accounts/login', resp['Location'])
 
     def test_non_owner_gets_403(self):
-        self.client.login(username='other', password='testpass')
+        self.client.force_login(self.other)
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 403)
 
     def test_owner_gets_200(self):
-        self.client.login(username='owner', password='testpass')
+        self.client.force_login(self.owner)
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 200)
 
     def test_valid_post_updates_unit(self):
-        self.client.login(username='owner', password='testpass')
+        self.client.force_login(self.owner)
         self.client.post(self.url, {'unit': Scale.POUNDS, 'users': []})
         self.scale.refresh_from_db()
         self.assertEqual(self.scale.unit, Scale.POUNDS)
 
     def test_valid_post_assigns_user_profile(self):
         profile = make_profile(self.owner)
-        self.client.login(username='owner', password='testpass')
+        self.client.force_login(self.owner)
         self.client.post(self.url, {'unit': Scale.KILOGRAMS, 'users': [profile.pk]})
         self.assertIn(profile, self.scale.users.all())
 
     def test_cannot_assign_other_users_profile(self):
         other_profile = make_profile(self.other, short_name='Other')
-        self.client.login(username='owner', password='testpass')
+        self.client.force_login(self.owner)
         resp = self.client.post(self.url, {'unit': Scale.KILOGRAMS, 'users': [other_profile.pk]})
         self.assertEqual(resp.status_code, 200)  # form error, not redirect
         self.assertNotIn(other_profile, self.scale.users.all())
@@ -676,7 +676,7 @@ class RegistrationStatusViewTest(TestCase):
         self.assertIn('/accounts/login', resp['Location'])
 
     def test_no_new_scale_shows_waiting_page(self):
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         session = self.client.session
         session['initial_scale_count'] = 0
         session.save()
@@ -686,7 +686,7 @@ class RegistrationStatusViewTest(TestCase):
 
     def test_new_scale_redirects_to_scale_list(self):
         make_scale(self.user)
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         session = self.client.session
         session['initial_scale_count'] = 0
         session.save()
@@ -695,7 +695,7 @@ class RegistrationStatusViewTest(TestCase):
 
     def test_redirects_clears_session_key(self):
         make_scale(self.user)
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         session = self.client.session
         session['initial_scale_count'] = 0
         session.save()
@@ -704,7 +704,7 @@ class RegistrationStatusViewTest(TestCase):
 
     def test_existing_scale_does_not_trigger_redirect(self):
         make_scale(self.user)
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         session = self.client.session
         session['initial_scale_count'] = 1  # already knew about that scale
         session.save()
@@ -721,11 +721,11 @@ class CurlRegistrationViewSessionTest(TestCase):
 
     def test_post_stores_initial_scale_count_in_session(self):
         make_scale(self.user)
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         self.client.post(self.url)
         self.assertEqual(self.client.session['initial_scale_count'], 1)
 
     def test_post_with_no_scales_stores_zero(self):
-        self.client.login(username='testuser', password='testpass')
+        self.client.force_login(self.user)
         self.client.post(self.url)
         self.assertEqual(self.client.session['initial_scale_count'], 0)
