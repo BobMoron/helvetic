@@ -46,6 +46,12 @@ urlpatterns = [
   ),
 
   re_path(
+    r'^scales/register/status/$',
+    registration.RegistrationStatusView.as_view(),
+    name='register_status'
+  ),
+
+  re_path(
     r'^profile/$',
     profile.ProfileView.as_view(),
     name='profile'

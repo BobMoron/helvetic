@@ -1,0 +1,26 @@
+{# -*- mode: html; indent-tabs-mode: nil; tab-width: 2 -*- #}
+{% extends "helvetic/base.html" %}
+{% block title %}Waiting for Aria — helvetic{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Waiting for Aria&hellip;</h1>
+</div>
+
+<p class="text-muted">Checking for your scale every 5 seconds&hellip;</p>
+
+<div class="well">
+  <p>Make sure you have:</p>
+  <ol>
+    <li>Run the curl command while connected to the Aria's network.</li>
+    <li>Reconnected your computer to your home network.</li>
+  </ol>
+  <p>The Aria will contact helvetic to complete registration. This usually takes 30&ndash;60 seconds.</p>
+</div>
+
+<a href="{% url 'scale_list' %}" class="btn btn-default">Check My Devices manually</a>
+
+<script>
+  setTimeout(function() { location.reload(); }, 5000);
+</script>
+{% endblock %}

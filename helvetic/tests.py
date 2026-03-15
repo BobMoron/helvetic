@@ -657,3 +657,75 @@ class ScaleEditViewTest(TestCase):
         resp = self.client.post(self.url, {'unit': Scale.KILOGRAMS, 'users': [other_profile.pk]})
         self.assertEqual(resp.status_code, 200)  # form error, not redirect
         self.assertNotIn(other_profile, self.scale.users.all())
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Registration status + curl UX
+# ---------------------------------------------------------------------------
+
+class RegistrationStatusViewTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.user = make_user()
+        self.url = reverse('register_status')
+
+    def test_unauthenticated_redirects_to_login(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/accounts/login', resp['Location'])
+
+    def test_no_new_scale_shows_waiting_page(self):
+        self.client.login(username='testuser', password='testpass')
+        session = self.client.session
+        session['initial_scale_count'] = 0
+        session.save()
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Waiting')
+
+    def test_new_scale_redirects_to_scale_list(self):
+        make_scale(self.user)
+        self.client.login(username='testuser', password='testpass')
+        session = self.client.session
+        session['initial_scale_count'] = 0
+        session.save()
+        resp = self.client.get(self.url)
+        self.assertRedirects(resp, reverse('scale_list'))
+
+    def test_redirects_clears_session_key(self):
+        make_scale(self.user)
+        self.client.login(username='testuser', password='testpass')
+        session = self.client.session
+        session['initial_scale_count'] = 0
+        session.save()
+        self.client.get(self.url)
+        self.assertNotIn('initial_scale_count', self.client.session)
+
+    def test_existing_scale_does_not_trigger_redirect(self):
+        make_scale(self.user)
+        self.client.login(username='testuser', password='testpass')
+        session = self.client.session
+        session['initial_scale_count'] = 1  # already knew about that scale
+        session.save()
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+
+
+class CurlRegistrationViewSessionTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.user = make_user()
+        self.url = reverse('register_curl')
+
+    def test_post_stores_initial_scale_count_in_session(self):
+        make_scale(self.user)
+        self.client.login(username='testuser', password='testpass')
+        self.client.post(self.url)
+        self.assertEqual(self.client.session['initial_scale_count'], 1)
+
+    def test_post_with_no_scales_stores_zero(self):
+        self.client.login(username='testuser', password='testpass')
+        self.client.post(self.url)
+        self.assertEqual(self.client.session['initial_scale_count'], 0)

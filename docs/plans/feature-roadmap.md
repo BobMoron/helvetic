@@ -118,26 +118,7 @@ Columns: `date` (ISO 8601), `weight_kg` (3dp), `body_fat_pct`
 
 ## Phase 3 — User Management
 
-**New files:**
-| File | Purpose |
-|------|---------|
-| `helvetic/views/usermgmt.py` | `UserListView`, `UserCreateView`, `UserDeactivateView` |
-| `helvetic/templates/helvetic/user_list.html` | Table with active/inactive badges; deactivate button |
-| `helvetic/templates/helvetic/user_create.html` | Create user form |
-
-**Modified files:**
-| File | Change |
-|------|--------|
-| `helvetic/forms.py` | Add `UserCreateForm`: calls `set_password()` on save |
-| `helvetic/urls.py` | Add `/users/`, `/users/create/`, `/users/<int:pk>/deactivate/` |
-| `helvetic/templates/helvetic/base.html` | Add "Users" nav link, conditionally on `user.is_staff` |
-
-**Access control:** `UserPassesTestMixin`, `test_func = lambda self: self.request.user.is_staff` on all three views.
-
-**Key decisions:**
-- Deactivation only (`user.is_active = False`), no deletion
-- `UserDeactivateView`: POST-only; raises `PermissionDenied` if targeting self
-- No user edit view — password reset via `/accounts/password_change/`
+**Decision: skipped.** The deployment has only 2 users; the Django admin (`/admin/`) covers all user management needs without additional code.
 
 ---
 
@@ -145,14 +126,26 @@ Columns: `date` (ISO 8601), `weight_kg` (3dp), `body_fat_pct`
 
 Browser-initiated AP config is not viable: `fetch()` cannot set `Cookie` on foreign origins, and the server is not on the scale's network. The existing curl flow is correct; only the UX needs improvement.
 
+**Status: implemented.** 68 tests passing.
+
 **Modified files:**
 | File | Change |
 |------|--------|
-| `helvetic/templates/helvetic/registration/register_curl.html` | Show exact curl command with token pre-filled in copyable `<pre>`; one-click JS copy button |
-| `helvetic/views/registration.py` | Add `RegistrationStatusView` |
-| `helvetic/urls.py` | Add `/scales/register/status/` |
+| `helvetic/templates/helvetic/registration/register_curl.html` | Rewritten: SSID/PSK inputs, curl command in `<pre class="well">` with `encodeURIComponent()` encoding, one-click Clipboard API copy button |
+| `helvetic/templates/helvetic/registration/register_status.html` | New: "Waiting for Aria…" page with JS `setTimeout(location.reload, 5000)` auto-refresh; manual fallback link to `/scales/` |
+| `helvetic/views/registration.py` | `CurlRegistrationView.post()` stores `request.session['initial_scale_count']`; new `RegistrationStatusView` polls scale count and redirects on increase |
+| `helvetic/urls.py` | Added `/scales/register/status/` → `RegistrationStatusView` (name `register_status`) |
+| `helvetic/tests.py` | 7 new tests: `RegistrationStatusViewTest` (5 cases), `CurlRegistrationViewSessionTest` (2 cases) |
 
-**Status page:** `<meta http-equiv="refresh" content="5">` polling page that checks `Scale.objects.filter(owner=request.user)` for newly added scales. Redirects to `/scales/` on first match. No WebSockets/Channels needed.
+**How the status flow works:**
+1. User POSTs to `/scales/register/curl` → server deletes stale tokens, creates a fresh `AuthorisationToken`, stores current scale count in `request.session['initial_scale_count']`, renders the curl command page.
+2. User runs the curl command against the scale's AP, reconnects to their home network.
+3. Scale contacts `/scale/register` → server creates a new `Scale` record.
+4. User navigates to `/scales/register/status/` (linked from step 1's page). The view compares current scale count to the session value. If greater, clears the session key and redirects to `/scales/`. Otherwise renders the waiting template which auto-reloads every 5 s via JS.
+
+**Session key:** `initial_scale_count` (integer). Cleared on successful redirect.
+
+**Why JS reload instead of `<meta http-equiv="refresh">`:** The base template has no `{% block head %}`, so a meta tag inserted from a child template's `{% block content %}` would be rendered in the body — valid HTML but non-standard. JS `setTimeout(function() { location.reload(); }, 5000)` at the bottom of `{% block content %}` is unambiguous.
 
 ---
 
@@ -170,24 +163,14 @@ Browser-initiated AP config is not viable: `fetch()` cannot set `Cookie` on fore
 
 ## Test Plan
 
-Split `tests.py` into a package before Phase 2:
+Tests live in `helvetic/tests.py` (68 tests, all passing as of Phase 4).
 
-```
-helvetic/tests/__init__.py
-helvetic/tests/test_models.py       ← move existing model tests
-helvetic/tests/test_api.py          ← move existing API view tests
-helvetic/tests/test_webui.py        ← move existing web UI tests
-helvetic/tests/test_export.py       ← Phase 1
-helvetic/tests/test_measurements.py ← Phase 2
-helvetic/tests/test_usermgmt.py     ← Phase 3
-helvetic/tests/test_registration.py ← Phase 4
-```
-
-New tests per phase:
-- **Phase 1:** `ProfileViewTest` (no-profile → redirect, 200 with profile), `ProfileEditViewTest` (create, update, invalid POST), `MeasurementExportViewTest` (auth redirect, empty CSV, CSV with data)
-- **Phase 2:** `MeasurementDataViewTest` (JSON structure, unit conversion, empty dataset), `ScaleEditViewTest` (owner edits, non-owner 403, M2M assignment)
-- **Phase 3:** `UserListViewTest` (non-staff 403), `UserCreateViewTest` (password hashed), `UserDeactivateViewTest` (non-staff 403, self-deactivate 403)
-- **Phase 4:** `RegistrationStatusViewTest` (no scale → refresh, scale found → redirect)
+Coverage by phase:
+- **Pre-existing:** `AuthorisationTokenLookupTest`, `UserProfileAgeTest`, `UserProfileShortNameFormattedTest`, `UserProfileLatestMeasurementTest`, `ScaleUploadViewTest`, `ScaleRegisterViewTest`, `ScaleValidateViewTest`, `IndexViewTest`, `ScaleListViewTest`, `RegistrationViewTest`
+- **Phase 1:** `ProfileViewTest`, `ProfileEditViewTest`, `MeasurementExportViewTest`
+- **Phase 2:** `MeasurementListViewTest`, `MeasurementGraphViewTest`, `MeasurementDataViewTest`, `ScaleEditViewTest`
+- **Phase 3:** skipped (Django admin used instead)
+- **Phase 4:** `RegistrationStatusViewTest` (5 cases: unauthenticated redirect, no new scale, new scale → redirect, session cleared, existing scale not triggering redirect), `CurlRegistrationViewSessionTest` (2 cases: stores correct count with and without pre-existing scales)
 
 Run:
 ```bash
