@@ -1118,3 +1118,202 @@ class MeasurementImportViewTest(TestCase):
         resp = self._post(self._helvetic_csv(), fmt='auto', scale=self.other_scale)
         self.assertEqual(resp.status_code, 200)  # form invalid
         self.assertFalse(Measurement.objects.filter(user=self.user).exists())
+
+
+# ---------------------------------------------------------------------------
+# ScaleListView: queryset / data-isolation tests
+# ---------------------------------------------------------------------------
+
+class ScaleListViewIsolationTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.alice = make_user(username='alice')
+        self.bob = make_user(username='bob')
+        self.alice_scale = make_scale(self.alice, hw_address='AABBCCDDEEFF', ssid='AliceNet')
+        self.bob_scale = make_scale(self.bob, hw_address='112233445566', ssid='BobNet')
+        self.url = reverse('scale_list')
+
+    def test_owner_sees_own_scale(self):
+        self.client.force_login(self.alice)
+        resp = self.client.get(self.url)
+        self.assertContains(resp, 'AABBCCDDEEFF')
+
+    def test_owner_does_not_see_other_users_scale(self):
+        self.client.force_login(self.alice)
+        resp = self.client.get(self.url)
+        self.assertNotContains(resp, '112233445566')
+
+    def test_user_listed_on_scale_sees_it_without_owning(self):
+        # Add alice's profile to bob's scale users M2M
+        alice_profile = make_profile(self.alice)
+        self.bob_scale.users.add(alice_profile)
+        self.client.force_login(self.alice)
+        resp = self.client.get(self.url)
+        self.assertContains(resp, '112233445566')
+
+    def test_no_duplicates_when_owner_is_also_listed_user(self):
+        alice_profile = make_profile(self.alice)
+        self.alice_scale.users.add(alice_profile)
+        self.client.force_login(self.alice)
+        resp = self.client.get(self.url)
+        # Scale should appear exactly once
+        self.assertEqual(resp.content.decode().count('AABBCCDDEEFF'), 1)
+
+
+# ---------------------------------------------------------------------------
+# MeasurementImportForm: clean() edge cases
+# ---------------------------------------------------------------------------
+
+class MeasurementImportFormCleanTest(TestCase):
+
+    def setUp(self):
+        self.user = make_user()
+        self.scale = make_scale(self.user)
+
+    def _make_form(self, csv_bytes, fmt='auto', fitbit_unit=''):
+        from .forms import MeasurementImportForm
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        f = SimpleUploadedFile('data.csv', csv_bytes, content_type='text/csv')
+        data = {'scale': self.scale.pk, 'format': fmt, 'fitbit_weight_unit': fitbit_unit}
+        files = {'file': f}
+        return MeasurementImportForm(data, files, user=self.user)
+
+    def test_auto_detect_unknown_format_raises_validation_error(self):
+        form = self._make_form(b'foo,bar,baz\n1,2,3')
+        self.assertFalse(form.is_valid())
+        self.assertIn('Could not detect', str(form.errors))
+
+    def test_explicit_unknown_slug_rejected_by_choice_field(self):
+        # ChoiceField rejects unknown slugs before clean() is reached
+        form = self._make_form(b'foo,bar\n1,2', fmt='NonExistentImporter')
+        self.assertFalse(form.is_valid())
+        self.assertIn('format', form.errors)
+
+    def test_fitbit_format_without_weight_unit_is_invalid(self):
+        csv_bytes = b'Date,Weight,BMI,Fat\n2026-01-15,70.0,22.1,18.0'
+        form = self._make_form(csv_bytes, fmt='FitbitCsvImporter', fitbit_unit='')
+        self.assertFalse(form.is_valid())
+        self.assertIn('fitbit_weight_unit', form.errors)
+
+    def test_fitbit_format_with_weight_unit_is_valid(self):
+        csv_bytes = b'Date,Weight,BMI,Fat\n2026-01-15,70.0,22.1,18.0'
+        form = self._make_form(csv_bytes, fmt='FitbitCsvImporter', fitbit_unit='kg')
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data['resolved_format'], 'FitbitCsvImporter')
+
+    def test_auto_detect_helvetic_resolves_format(self):
+        csv_bytes = b'date,weight_kg,body_fat_pct\n2026-01-15T10:00:00+00:00,70.0,18.0'
+        form = self._make_form(csv_bytes, fmt='auto')
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data['resolved_format'], 'HelveticCsvImporter')
+
+
+# ---------------------------------------------------------------------------
+# Admin smoke tests
+# ---------------------------------------------------------------------------
+
+class AdminSmokeTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.superuser = User.objects.create_superuser(
+            username='admin', password='adminpass', email='admin@example.com')
+        self.client.force_login(self.superuser)
+
+    def test_scale_changelist(self):
+        resp = self.client.get('/admin/helvetic/scale/')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_userprofile_changelist(self):
+        resp = self.client.get('/admin/helvetic/userprofile/')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_measurement_changelist(self):
+        resp = self.client.get('/admin/helvetic/measurement/')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_authorisationtoken_changelist(self):
+        resp = self.client.get('/admin/helvetic/authorisationtoken/')
+        self.assertEqual(resp.status_code, 200)
+
+
+# ---------------------------------------------------------------------------
+# Model __str__ tests
+# ---------------------------------------------------------------------------
+
+class ModelStrTest(TestCase):
+
+    def test_scale_str_returns_hw_address(self):
+        owner = make_user()
+        scale = make_scale(owner, hw_address='AABBCCDDEEFF')
+        self.assertEqual(str(scale), 'AABBCCDDEEFF')
+
+    def test_userprofile_str_returns_username(self):
+        user = make_user(username='alice')
+        profile = make_profile(user)
+        self.assertEqual(str(profile), 'alice')
+
+
+# ---------------------------------------------------------------------------
+# STONES unit: scale config and upload response
+# ---------------------------------------------------------------------------
+
+class StonesUnitTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.owner = make_user()
+        self.scale = make_scale(self.owner)
+        self.edit_url = reverse('scale_edit', args=[self.scale.pk])
+
+    def test_stones_unit_saved_via_edit_view(self):
+        self.client.force_login(self.owner)
+        self.client.post(self.edit_url, {'unit': Scale.STONES, 'users': []})
+        self.scale.refresh_from_db()
+        self.assertEqual(self.scale.unit, Scale.STONES)
+
+    @patch('helvetic.views.aria_api.crc16xmodem', return_value=0x0000)
+    def test_upload_response_reflects_stones_unit(self, _mock_crc):
+        MAC = 'CCDDEE001122'
+        AUTH = 'D' * 32
+        self.scale.hw_address = MAC
+        self.scale.auth_code = AUTH
+        self.scale.unit = Scale.STONES
+        self.scale.save()
+        body = build_upload_body(MAC, AUTH)
+        resp = self.client.post(
+            reverse('scaleapi_upload'), data=body,
+            content_type='application/octet-stream')
+        self.assertEqual(resp.status_code, 200)
+        # Response is struct.pack('<LBBBL', timestamp, unit, 0x32, 0x01, user_count)
+        # unit is at byte 4
+        unit_byte = resp.content[4]
+        self.assertEqual(unit_byte, Scale.STONES)
+
+
+# ---------------------------------------------------------------------------
+# Null-user measurements (uid=0 in upload)
+# ---------------------------------------------------------------------------
+
+class NullUserMeasurementTest(TestCase):
+
+    MAC = 'FFEEDDCCBBAA'
+    AUTH = 'E' * 32
+
+    def setUp(self):
+        self.client = Client()
+        self.owner = make_user()
+        self.scale = make_scale(self.owner, hw_address=self.MAC, auth_code=self.AUTH)
+
+    @patch('helvetic.views.aria_api.crc16xmodem', return_value=0x0000)
+    def test_uid_zero_creates_measurement_with_null_user(self, _mock_crc):
+        m = {'id2': 1, 'imp': 0, 'weight': 75000, 'ts': 900,
+             'uid': 0, 'fat1': 0, 'covar': 0, 'fat2': 0}
+        body = build_upload_body(self.MAC, self.AUTH, measurements=[m], scale_now=1000)
+        resp = self.client.post(
+            reverse('scaleapi_upload'), data=body,
+            content_type='application/octet-stream')
+        self.assertEqual(resp.status_code, 200)
+        measurement = Measurement.objects.get(scale=self.scale, weight=75000)
+        self.assertIsNone(measurement.user)
