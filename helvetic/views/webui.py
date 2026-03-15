@@ -4,16 +4,20 @@ webui.py - misc web functionality
 """
 import csv
 
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.http import HttpResponse
+from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.views.generic import TemplateView, View
 from django.views.generic.edit import UpdateView
 from django.views.generic.list import ListView
 
-from ..forms import ScaleConfigForm
+from ..forms import MeasurementImportForm, ScaleConfigForm
+from ..importers.base import CsvParseError
+from ..importers.registry import registry
 from ..models import Measurement, Scale, UserProfile
 
 
@@ -59,3 +63,52 @@ class MeasurementExportView(LoginRequiredMixin, View):
         m.body_fat,
       ])
     return response
+
+
+class MeasurementImportView(LoginRequiredMixin, View):
+  def get(self, request):
+    form = MeasurementImportForm(user=request.user)
+    return render(request, 'helvetic/measurement_import.html', {'form': form})
+
+  def post(self, request):
+    form = MeasurementImportForm(request.POST, request.FILES, user=request.user)
+    if not form.is_valid():
+      return render(request, 'helvetic/measurement_import.html', {'form': form})
+
+    fmt = form.cleaned_data['resolved_format']
+    imp = registry.get(fmt)
+    scale = form.cleaned_data['scale']
+    f = form.cleaned_data['file']
+    kwargs = {}
+    if getattr(imp, 'needs_weight_unit', False):
+      kwargs['weight_unit'] = form.cleaned_data.get('fitbit_weight_unit', 'kg')
+
+    try:
+      rows = imp.parse(f, **kwargs)
+    except CsvParseError as e:
+      form.add_error('file', str(e))
+      return render(request, 'helvetic/measurement_import.html', {'form': form})
+
+    existing = set(
+      Measurement.objects.filter(user=request.user, scale=scale)
+      .values_list('when', flat=True)
+    )
+    new_objs = []
+    skipped = 0
+    for row in rows:
+      if row['when'] in existing:
+        skipped += 1
+      else:
+        new_objs.append(Measurement(
+          user=request.user,
+          scale=scale,
+          when=row['when'],
+          weight=row['weight_grams'],
+          body_fat=row['body_fat'],
+        ))
+    Measurement.objects.bulk_create(new_objs)
+    messages.success(
+      request,
+      f'Imported {len(new_objs)} measurement(s), skipped {skipped} duplicate(s).'
+    )
+    return redirect(reverse_lazy('measurement_list'))

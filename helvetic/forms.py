@@ -60,6 +60,51 @@ class ScaleConfigForm(forms.ModelForm):
       self.fields['users'].queryset = UserProfile.objects.filter(user=owner)
 
 
+class MeasurementImportForm(forms.Form):
+  scale = forms.ModelChoiceField(queryset=Scale.objects.none(), label='Target scale')
+  format = forms.ChoiceField(choices=[], label='File format')
+  file = forms.FileField(label='CSV file')
+  fitbit_weight_unit = forms.ChoiceField(
+    choices=[('kg', 'Kilograms (kg)'), ('lbs', 'Pounds (lbs)')],
+    required=False,
+    label='Fitbit weight unit',
+  )
+
+  def __init__(self, *args, user=None, **kwargs):
+    from .importers.registry import registry
+    super().__init__(*args, **kwargs)
+    if user is not None:
+      self.fields['scale'].queryset = Scale.objects.filter(owner=user)
+    self.fields['format'].choices = [('auto', 'Auto-detect')] + registry.choices()
+
+  def clean(self):
+    from .importers.registry import registry
+    cleaned = super().clean()
+    fmt = cleaned.get('format')
+    f = cleaned.get('file')
+
+    if fmt and f:
+      if fmt == 'auto':
+        detected = registry.autodetect(f)
+        if detected is None:
+          raise forms.ValidationError(
+            'Could not detect file format. Please select it explicitly.')
+        cleaned['resolved_format'] = detected
+      else:
+        try:
+          registry.get(fmt)
+        except ValueError:
+          raise forms.ValidationError('Unknown format selected.')
+        cleaned['resolved_format'] = fmt
+
+      imp = registry.get(cleaned['resolved_format'])
+      if getattr(imp, 'needs_weight_unit', False) and not cleaned.get('fitbit_weight_unit'):
+        self.add_error('fitbit_weight_unit',
+                       'Select the weight unit used in your Fitbit export.')
+
+    return cleaned
+
+
 class UserCreateForm(forms.Form):
   username = forms.CharField(max_length=150)
   password = forms.CharField(widget=forms.PasswordInput)

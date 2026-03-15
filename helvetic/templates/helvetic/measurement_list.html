@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="page-header">
-  <h1>Measurements <small><a href="{% url 'measurement_graph' %}">View graph</a> &middot; <a href="{% url 'measurement_export' %}">Export CSV</a></small></h1>
+  <h1>Measurements <small><a href="{% url 'measurement_graph' %}">View graph</a> &middot; <a href="{% url 'measurement_export' %}">Export CSV</a> &middot; <a href="{% url 'measurement_import' %}">Import CSV</a></small></h1>
 </div>
 
 {% if object_list %}

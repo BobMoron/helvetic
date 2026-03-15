@@ -1,0 +1,65 @@
+{% extends "helvetic/base.html" %}
+{% block title %}Import measurements — helvetic{% endblock %}
+{% block content %}
+<h2>Import measurements</h2>
+<p class="text-muted">Supported formats: Helvetic CSV (round-trip) and Fitbit weight export. Duplicates (same scale + timestamp) are skipped.</p>
+<form method="post" enctype="multipart/form-data" id="import-form">
+  {% csrf_token %}
+  {% for field in form %}
+  <div class="form-group{% if field.errors %} has-error{% endif %}"
+       {% if field.html_name == 'fitbit_weight_unit' %}id="fitbit-unit-group" style="display:none"{% endif %}>
+    <label class="control-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+    {{ field }}
+    {% for error in field.errors %}
+    <span class="help-block">{{ error }}</span>
+    {% endfor %}
+    {% if field.help_text %}
+    <span class="help-block">{{ field.help_text }}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <div id="import-progress" class="progress" style="display:none">
+    <div class="progress-bar progress-bar-striped active" style="width:100%">Importing…</div>
+  </div>
+
+  <button type="submit" class="btn btn-primary" id="import-btn">Import</button>
+  <a href="{% url 'measurement_list' %}" class="btn btn-default">Cancel</a>
+</form>
+
+<script>
+(function () {
+  var formatSel = document.getElementById('id_format');
+  var unitGroup = document.getElementById('fitbit-unit-group');
+  var form = document.getElementById('import-form');
+  var btn = document.getElementById('import-btn');
+  var progress = document.getElementById('import-progress');
+
+  function toggleUnit() {
+    var val = formatSel ? formatSel.value : '';
+    if (val === 'FitbitCsvImporter') {
+      unitGroup.style.display = '';
+    } else {
+      unitGroup.style.display = 'none';
+    }
+  }
+
+  // Show unit field if there were server-side errors and Fitbit was selected
+  {% if form.fitbit_weight_unit.errors %}
+  if (unitGroup) unitGroup.style.display = '';
+  {% endif %}
+
+  if (formatSel) {
+    formatSel.addEventListener('change', toggleUnit);
+    toggleUnit();
+  }
+
+  if (form) {
+    form.addEventListener('submit', function () {
+      btn.disabled = true;
+      progress.style.display = '';
+    });
+  }
+}());
+</script>
+{% endblock %}

@@ -88,6 +88,12 @@ urlpatterns = [
   ),
 
   re_path(
+    r'^measurements/import/$',
+    webui.MeasurementImportView.as_view(),
+    name='measurement_import'
+  ),
+
+  re_path(
     r'^users/$',
     usermgmt.UserListView.as_view(),
     name='user_list'

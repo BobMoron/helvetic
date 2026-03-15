@@ -1,3 +1,4 @@
+import io
 import struct
 from datetime import date, timedelta, timezone, datetime
 from decimal import Decimal
@@ -7,6 +8,10 @@ from django.contrib.auth.models import User
 from django.test import TestCase, Client
 from django.urls import reverse
 
+from .importers.base import CsvParseError
+from .importers.helvetic_csv import HelveticCsvImporter
+from .importers.fitbit_csv import FitbitCsvImporter
+from .importers.registry import registry
 from .models import AuthorisationToken, Measurement, Scale, UserProfile, utcnow
 
 
@@ -856,3 +861,260 @@ class CurlRegistrationViewSessionTest(TestCase):
         self.client.force_login(self.user)
         self.client.post(self.url)
         self.assertEqual(self.client.session['initial_scale_count'], 0)
+
+
+# ---------------------------------------------------------------------------
+# Data import: parser unit tests (no DB)
+# ---------------------------------------------------------------------------
+
+def make_csv_bytes(*lines):
+    return io.BytesIO('\n'.join(lines).encode('utf-8'))
+
+
+class HelveticCsvImporterTest(TestCase):
+
+    def setUp(self):
+        self.imp = HelveticCsvImporter()
+
+    def test_valid_row_with_body_fat(self):
+        f = make_csv_bytes('date,weight_kg,body_fat_pct', '2026-01-15T10:00:00+00:00,70.500,18.250')
+        rows = self.imp.parse(f)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['weight_grams'], 70500)
+        self.assertEqual(rows[0]['body_fat'], Decimal('18.250'))
+
+    def test_valid_row_without_body_fat(self):
+        f = make_csv_bytes('date,weight_kg,body_fat_pct', '2026-01-15T10:00:00+00:00,70.500,')
+        rows = self.imp.parse(f)
+        self.assertIsNone(rows[0]['body_fat'])
+
+    def test_weight_grams_conversion(self):
+        f = make_csv_bytes('date,weight_kg,body_fat_pct', '2026-01-01T00:00:00+00:00,70.501,')
+        rows = self.imp.parse(f)
+        self.assertEqual(rows[0]['weight_grams'], 70501)
+
+    def test_tz_naive_date_gets_utc(self):
+        f = make_csv_bytes('date,weight_kg,body_fat_pct', '2026-01-01 10:00:00,70.0,')
+        rows = self.imp.parse(f)
+        self.assertEqual(rows[0]['when'].tzinfo, timezone.utc)
+
+    def test_tz_aware_date_preserved(self):
+        f = make_csv_bytes('date,weight_kg,body_fat_pct', '2026-01-01T10:00:00+00:00,70.0,')
+        rows = self.imp.parse(f)
+        self.assertIsNotNone(rows[0]['when'].tzinfo)
+
+    def test_bad_date_raises(self):
+        f = make_csv_bytes('date,weight_kg,body_fat_pct', 'not-a-date,70.0,')
+        with self.assertRaises(CsvParseError):
+            self.imp.parse(f)
+
+    def test_bad_weight_raises(self):
+        f = make_csv_bytes('date,weight_kg,body_fat_pct', '2026-01-01T00:00:00+00:00,notanumber,')
+        with self.assertRaises(CsvParseError):
+            self.imp.parse(f)
+
+    def test_empty_file_returns_empty_list(self):
+        f = make_csv_bytes('date,weight_kg,body_fat_pct')
+        rows = self.imp.parse(f)
+        self.assertEqual(rows, [])
+
+    def test_sniff_correct_headers(self):
+        self.assertTrue(HelveticCsvImporter.sniff(['date', 'weight_kg', 'body_fat_pct']))
+
+    def test_sniff_wrong_headers(self):
+        self.assertFalse(HelveticCsvImporter.sniff(['Date', 'Weight', 'BMI', 'Fat']))
+
+
+class FitbitCsvImporterTest(TestCase):
+
+    def setUp(self):
+        self.imp = FitbitCsvImporter()
+
+    def test_valid_row_kg(self):
+        f = make_csv_bytes('Date,Weight,BMI,Fat', '2026-01-15,70.5,22.1,18.0')
+        rows = self.imp.parse(f, weight_unit='kg')
+        self.assertEqual(rows[0]['weight_grams'], 70500)
+        self.assertEqual(rows[0]['body_fat'], Decimal('18.0'))
+
+    def test_valid_row_lbs(self):
+        f = make_csv_bytes('Date,Weight,BMI,Fat', '2026-01-15,155.423,22.1,')
+        rows = self.imp.parse(f, weight_unit='lbs')
+        # 155.423 lbs * 0.453592 = 70500g (approx)
+        self.assertAlmostEqual(rows[0]['weight_grams'], round(155.423 * 0.453592 * 1000), delta=1)
+
+    def test_bmi_column_ignored(self):
+        f = make_csv_bytes('Date,Weight,BMI,Fat', '2026-01-15,70.0,22.1,')
+        rows = self.imp.parse(f, weight_unit='kg')
+        self.assertNotIn('bmi', rows[0])
+
+    def test_empty_fat_is_none(self):
+        f = make_csv_bytes('Date,Weight,BMI,Fat', '2026-01-15,70.0,22.1,')
+        rows = self.imp.parse(f, weight_unit='kg')
+        self.assertIsNone(rows[0]['body_fat'])
+
+    def test_iso_date_format(self):
+        f = make_csv_bytes('Date,Weight,BMI,Fat', '2026-01-15,70.0,22.1,')
+        rows = self.imp.parse(f, weight_unit='kg')
+        self.assertEqual(rows[0]['when'].year, 2026)
+        self.assertEqual(rows[0]['when'].month, 1)
+        self.assertEqual(rows[0]['when'].day, 15)
+
+    def test_us_date_format(self):
+        f = make_csv_bytes('Date,Weight,BMI,Fat', '01/15/2026,70.0,22.1,')
+        rows = self.imp.parse(f, weight_unit='kg')
+        self.assertEqual(rows[0]['when'].year, 2026)
+        self.assertEqual(rows[0]['when'].month, 1)
+        self.assertEqual(rows[0]['when'].day, 15)
+
+    def test_bad_weight_unit_raises(self):
+        f = make_csv_bytes('Date,Weight,BMI,Fat', '2026-01-15,70.0,22.1,')
+        with self.assertRaises(CsvParseError):
+            self.imp.parse(f, weight_unit='stone')
+
+    def test_sniff_fitbit_headers(self):
+        self.assertTrue(FitbitCsvImporter.sniff(['Date', 'Weight', 'BMI', 'Fat']))
+
+    def test_sniff_does_not_match_helvetic(self):
+        self.assertFalse(FitbitCsvImporter.sniff(['date', 'weight_kg', 'body_fat_pct']))
+
+
+class RegistryAutodetectTest(TestCase):
+
+    def test_autodetects_helvetic(self):
+        f = make_csv_bytes('date,weight_kg,body_fat_pct', '2026-01-01T00:00:00+00:00,70.0,')
+        self.assertEqual(registry.autodetect(f), 'HelveticCsvImporter')
+
+    def test_autodetects_fitbit(self):
+        f = make_csv_bytes('Date,Weight,BMI,Fat', '2026-01-15,70.0,22.1,')
+        self.assertEqual(registry.autodetect(f), 'FitbitCsvImporter')
+
+    def test_unknown_headers_returns_none(self):
+        f = make_csv_bytes('foo,bar,baz', '1,2,3')
+        self.assertIsNone(registry.autodetect(f))
+
+    def test_empty_file_returns_none(self):
+        f = io.BytesIO(b'')
+        self.assertIsNone(registry.autodetect(f))
+
+    def test_choices_includes_both_formats(self):
+        slugs = [slug for slug, _ in registry.choices()]
+        self.assertIn('HelveticCsvImporter', slugs)
+        self.assertIn('FitbitCsvImporter', slugs)
+
+    def test_get_unknown_slug_raises(self):
+        with self.assertRaises(ValueError):
+            registry.get('NonExistentImporter')
+
+
+# ---------------------------------------------------------------------------
+# Data import: view integration tests
+# ---------------------------------------------------------------------------
+
+def _csv_upload(content, filename='data.csv'):
+    return io.BytesIO(content.encode('utf-8'))
+
+
+class MeasurementImportViewTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.user = make_user()
+        self.other = make_user(username='other')
+        self.owner_scale = make_scale(self.user, hw_address='AABBCCDDEEFF')
+        self.other_scale = make_scale(self.other, hw_address='112233445566')
+        self.url = reverse('measurement_import')
+
+    def _helvetic_csv(self, rows=(('2026-01-15T10:00:00+00:00', '70.5', '18.25'),)):
+        lines = ['date,weight_kg,body_fat_pct']
+        for when, weight, fat in rows:
+            lines.append(f'{when},{weight},{fat}')
+        return '\n'.join(lines).encode('utf-8')
+
+    def _fitbit_csv(self, rows=(('2026-01-15', '70.5', '22.1', '18.0'),)):
+        lines = ['Date,Weight,BMI,Fat']
+        for when, weight, bmi, fat in rows:
+            lines.append(f'{when},{weight},{bmi},{fat}')
+        return '\n'.join(lines).encode('utf-8')
+
+    def _post(self, csv_bytes, fmt='auto', scale=None, fitbit_unit=''):
+        if scale is None:
+            scale = self.owner_scale
+        return self.client.post(self.url, {
+            'scale': scale.pk,
+            'format': fmt,
+            'file': io.BytesIO(csv_bytes),
+            'fitbit_weight_unit': fitbit_unit,
+        })
+
+    def test_unauthenticated_redirects_to_login(self):
+        resp = self.client.get(self.url)
+        self.assertIn('/accounts/login', resp['Location'])
+
+    def test_get_returns_200(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_scale_dropdown_only_contains_own_scales(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(self.url)
+        content = resp.content.decode()
+        self.assertIn('AABBCCDDEEFF', content)
+        self.assertNotIn('112233445566', content)
+
+    def test_post_auto_helvetic_creates_measurement(self):
+        self.client.force_login(self.user)
+        resp = self._post(self._helvetic_csv(), fmt='auto')
+        self.assertRedirects(resp, reverse('measurement_list'))
+        self.assertEqual(Measurement.objects.filter(user=self.user).count(), 1)
+        m = Measurement.objects.get(user=self.user)
+        self.assertEqual(m.weight, 70500)
+
+    def test_post_explicit_fitbit_kg(self):
+        self.client.force_login(self.user)
+        resp = self._post(self._fitbit_csv(), fmt='FitbitCsvImporter', fitbit_unit='kg')
+        self.assertRedirects(resp, reverse('measurement_list'))
+        m = Measurement.objects.get(user=self.user)
+        self.assertEqual(m.weight, 70500)
+
+    def test_post_explicit_fitbit_lbs(self):
+        # 155.423 lbs ≈ 70500g
+        csv_bytes = self._fitbit_csv(rows=(('2026-01-15', '155.423', '22.1', ''),))
+        self.client.force_login(self.user)
+        resp = self._post(csv_bytes, fmt='FitbitCsvImporter', fitbit_unit='lbs')
+        self.assertRedirects(resp, reverse('measurement_list'))
+        m = Measurement.objects.get(user=self.user)
+        self.assertAlmostEqual(m.weight, round(155.423 * 453.592), delta=1)
+
+    def test_fitbit_without_weight_unit_rerenders_with_error(self):
+        self.client.force_login(self.user)
+        resp = self._post(self._fitbit_csv(), fmt='FitbitCsvImporter', fitbit_unit='')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(Measurement.objects.filter(user=self.user).exists())
+
+    def test_malformed_csv_rerenders_with_file_error(self):
+        bad_csv = b'date,weight_kg,body_fat_pct\nnot-a-date,70.0,'
+        self.client.force_login(self.user)
+        resp = self._post(bad_csv, fmt='HelveticCsvImporter')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(Measurement.objects.filter(user=self.user).exists())
+
+    def test_duplicate_row_skipped(self):
+        when = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        Measurement.objects.create(
+            user=self.user, scale=self.owner_scale, when=when, weight=70500)
+        self.client.force_login(self.user)
+        self._post(self._helvetic_csv(), fmt='auto')
+        self.assertEqual(Measurement.objects.filter(user=self.user).count(), 1)
+
+    def test_success_message_contains_counts(self):
+        self.client.force_login(self.user)
+        self._post(self._helvetic_csv(), fmt='auto')
+        resp = self.client.get(reverse('measurement_list'))
+        self.assertContains(resp, 'Imported 1')
+
+    def test_cannot_import_to_other_users_scale(self):
+        self.client.force_login(self.user)
+        resp = self._post(self._helvetic_csv(), fmt='auto', scale=self.other_scale)
+        self.assertEqual(resp.status_code, 200)  # form invalid
+        self.assertFalse(Measurement.objects.filter(user=self.user).exists())
