@@ -1,0 +1,52 @@
+{# -*- mode: html; indent-tabs-mode: nil; tab-width: 2 -*- #}
+{% extends "helvetic/base.html" %}
+{% block title %}Edit Profile — helvetic{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Edit Profile</h1>
+</div>
+
+<div class="row">
+  <div class="col-md-6">
+    <form method="post" class="form-horizontal">
+      {% csrf_token %}
+      {% for field in form %}
+      <div class="form-group{% if field.errors %} has-error{% endif %}">
+        <label class="col-sm-4 control-label" for="{{ field.id_for_label }}">
+          {{ field.label }}
+        </label>
+        <div class="col-sm-8">
+          {% if field.field.widget.input_type == 'select' %}
+            <select name="{{ field.html_name }}" id="{{ field.id_for_label }}" class="form-control">
+              {% for val, display in field.field.choices %}
+                <option value="{{ val }}"{% if field.value|stringformat:"s" == val|stringformat:"s" %} selected{% endif %}>{{ display }}</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input type="{{ field.field.widget.input_type }}"
+                   name="{{ field.html_name }}"
+                   id="{{ field.id_for_label }}"
+                   class="form-control"
+                   value="{{ field.value|default_if_none:'' }}"
+                   {% if field.field.required %}required{% endif %}>
+          {% endif %}
+          {% if field.help_text %}
+            <span class="help-block">{{ field.help_text }}</span>
+          {% endif %}
+          {% for error in field.errors %}
+            <span class="help-block text-danger">{{ error }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+      <div class="form-group">
+        <div class="col-sm-offset-4 col-sm-8">
+          <button type="submit" class="btn btn-primary">Save</button>
+          <a href="{% url 'profile' %}" class="btn btn-default">Cancel</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

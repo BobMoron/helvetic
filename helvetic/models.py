@@ -128,6 +128,10 @@ class UserProfile(models.Model):
 			from_date = utcnow().date()
 		return relativedelta(from_date, self.birth_date).years
 
+	@property
+	def height_cm(self):
+		return self.height // 10
+
 	def short_name_formatted(self):
 		return str(self.short_name)[:20].upper().ljust(20)
 
@@ -157,6 +161,10 @@ class Measurement(models.Model):
 		blank=True,
 		null=True
 	)
+
+	@property
+	def weight_kg(self):
+		return round(self.weight / 1000, 3)
 
 def _generate_auth_expiry():
 	"""

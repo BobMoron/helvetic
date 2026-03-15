@@ -1,0 +1,39 @@
+{# -*- mode: html; indent-tabs-mode: nil; tab-width: 2 -*- #}
+{% extends "helvetic/base.html" %}
+{% block title %}My Profile — helvetic{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>My Profile <small><a href="{% url 'profile_edit' %}">Edit</a></small></h1>
+</div>
+
+<div class="row">
+  <div class="col-md-6">
+    <table class="table table-striped">
+      <tr><th>Name on scale</th><td>{{ profile.short_name }}</td></tr>
+      <tr><th>Date of birth</th><td>{{ profile.birth_date }}</td></tr>
+      <tr><th>Age</th><td>{{ profile.age }} years</td></tr>
+      <tr><th>Height</th><td>{{ profile.height|floatformat:0 }} mm ({{ profile.height_cm }} cm)</td></tr>
+      <tr><th>Gender</th><td>{{ profile.get_gender_display }}</td></tr>
+    </table>
+  </div>
+
+  {% if measurement %}
+  <div class="col-md-6">
+    <h3>Latest measurement</h3>
+    <table class="table table-striped">
+      <tr><th>Date</th><td>{{ measurement.when }}</td></tr>
+      <tr><th>Weight</th><td>{{ measurement.weight_kg }} kg</td></tr>
+      {% if measurement.body_fat %}
+      <tr><th>Body fat</th><td>{{ measurement.body_fat }}%</td></tr>
+      {% endif %}
+    </table>
+    <a href="{% url 'measurement_export' %}" class="btn btn-default btn-sm">Export CSV</a>
+  </div>
+  {% else %}
+  <div class="col-md-6">
+    <p class="text-muted">No measurements recorded yet.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

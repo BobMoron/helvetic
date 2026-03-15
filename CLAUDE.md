@@ -8,14 +8,23 @@ Helvetic is a Django app that replaces the FitBit Aria scale's cloud service. It
 
 ## Commands
 
-All Django commands run from `helv_test/`:
+All Django commands run from `helv_test/` using the venv:
 
 ```bash
+# First-time setup
+python -m venv env
+env/Scripts/pip install -r requirements.txt
+
+# Run the server (must be on port 80 for the scale to reach it)
 cd helv_test
-python manage.py runserver       # dev server
-python manage.py migrate         # apply migrations
-python manage.py test            # run tests (minimal currently)
-python manage.py createsuperuser # create admin user
+PYTHONPATH=/c/Users/bla/git/helvetic ../env/Scripts/python manage.py runserver 0.0.0.0:80
+
+# Database / admin
+PYTHONPATH=.. ../env/Scripts/python manage.py migrate
+PYTHONPATH=.. ../env/Scripts/python manage.py createsuperuser
+
+# Tests
+PYTHONPATH=.. ../env/Scripts/python manage.py test helvetic
 ```
 
 Test server (simulates an Aria scale for development):
@@ -26,10 +35,38 @@ docker build -t helvetictest testserver/
 docker run -p 8000:8000 -it helvetictest
 ```
 
-Install dependencies:
-```bash
-pip install -r requirements.txt
+## Deployment / DNS Spoofing
+
+The Aria scale contacts `aria.fitbit.com` — you must redirect that hostname to your server. The scale uses port 80 (not configurable), so helvetic must listen on port 80.
+
+### DNS redirect options (pick one)
+
+**Router custom DNS entry** (simplest if your router supports it):
+Add a static DNS override: `aria.fitbit.com → <your server IP>`
+
+**dnsmasq** (run on any Linux box, point your router's DNS at it):
 ```
+# /etc/dnsmasq.conf
+address=/aria.fitbit.com/192.168.1.x
+```
+
+**Pi-hole** (if already running):
+Add under *Local DNS Records*: `aria.fitbit.com → 192.168.1.x`
+
+### nginx reverse proxy (recommended over running Django on port 80 directly)
+
+```nginx
+server {
+    listen 80;
+    server_name aria.fitbit.com;
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+    }
+}
+```
+
+Then run Django on the default port 8000 without root.
 
 ## Architecture
 
