@@ -1,8 +1,8 @@
-from django.conf.urls import include, url
 from django.contrib import admin
+from django.urls import include, path, re_path
 
 urlpatterns = [
-    url(r'^admin/', include(admin.site.urls)),
-    url(r'^accounts/', include('django.contrib.auth.urls')),
-    url(r'^', include('helvetic.urls')),
+    path('admin/', admin.site.urls),
+    path('accounts/', include('django.contrib.auth.urls')),
+    re_path(r'^', include('helvetic.urls')),
 ]

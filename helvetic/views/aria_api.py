@@ -94,7 +94,7 @@ class ScaleUploadView(View):
 		if battery_pc > 100 or battery_pc < 0:
 			return HttpResponseBadRequest('Battery percentage must be 0..100 (got %d)' % battery_pc)
 
-		mac, auth_code = [b16encode(x) for x in (mac, auth_code)]
+		mac, auth_code = [b16encode(x).decode('ascii') for x in (mac, auth_code)]
 		scale = None
 
 		try:
@@ -163,7 +163,7 @@ class ScaleUploadView(View):
 				max_var = last_weight + 4000
 			response += struct.pack('<L16x20sLLLBLLLLLL',
 				profile.user.id,
-				profile.short_name_formatted(),
+				profile.short_name_formatted().encode('ascii'),
 				min_var,
 				max_var,
 				profile.age(),

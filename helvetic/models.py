@@ -1,12 +1,12 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 from django.db import models
 from django.contrib.auth.models import User
-import pytz, random, string
+import random, string
 
 def utcnow():
-	return datetime.now(pytz.UTC)
+	return datetime.now(timezone.utc)
 
 class Scale(models.Model):
 	hw_address = models.CharField(
@@ -58,10 +58,11 @@ class Scale(models.Model):
 
 	owner = models.ForeignKey(
 		User,
+		on_delete=models.CASCADE,
 		help_text='Owner of these scales.',
 		related_name='owned_scales'
 	)
-	
+
 	users = models.ManyToManyField(
 		'UserProfile',
 		help_text='UserProfiles for the users of this scale.',
@@ -69,13 +70,13 @@ class Scale(models.Model):
 		blank=True
 	)
 
-	def __unicode__(self):
+	def __str__(self):
 		return self.hw_address
 
 class UserProfile(models.Model):
-	user = models.ForeignKey(
+	user = models.OneToOneField(
 		User,
-		unique=True
+		on_delete=models.CASCADE,
 	)
 
 	short_name = models.CharField(
@@ -106,44 +107,42 @@ class UserProfile(models.Model):
 		help_text='Biological gender of the user. Used to calculate body fat.'
 	)
 
-	def __unicode__(self):
-		return unicode(self.user)
+	def __str__(self):
+		return str(self.user)
 
 	def latest_measurement(self):
 		"""
 		Returns the last measurement for the user, or None if no measurement
 		exists.
 		"""
-
-		#try:
-		return self.user.measurement.all().order_by('-when')[0]
-		#except:
-		#	return None
+		return self.user.measurement.all().order_by('-when').first()
 
 	def age(self, from_date=None):
 		"""
 		Returns the age of the user, in years.
-		
+
 		If no argument is specified, the age is calculated relative to today (in
 		UTC).
 		"""
 		if from_date is None:
 			from_date = utcnow().date()
 		return relativedelta(from_date, self.birth_date).years
-	
+
 	def short_name_formatted(self):
 		return str(self.short_name)[:20].upper().ljust(20)
 
 class Measurement(models.Model):
 	user = models.ForeignKey(
 		User,
+		on_delete=models.SET_NULL,
 		blank=True,
 		null=True,
 		related_name='measurement'
 	)
 
 	scale = models.ForeignKey(
-		Scale
+		Scale,
+		on_delete=models.CASCADE,
 	)
 
 	when = models.DateTimeField()
@@ -169,16 +168,16 @@ def _generate_auth_key():
 	"""
 	Generates a pseudorandom key for setting up the scales.
 	"""
-	return ''.join([random.choice(string.letters) for _ in range(10)])
+	return ''.join([random.choice(string.ascii_letters) for _ in range(10)])
 
 
 class AuthorisationToken(models.Model):
 	"""
 	Used during the setup of scales.
 	"""
-	user = models.ForeignKey(
+	user = models.OneToOneField(
 		User,
-		unique=True
+		on_delete=models.CASCADE,
 	)
 
 	expires = models.DateTimeField(default=_generate_auth_expiry)
@@ -186,14 +185,14 @@ class AuthorisationToken(models.Model):
 		max_length=10,
 		default=_generate_auth_key
 	)
-	
+
 	@classmethod
 	def lookup_token(cls, key):
 		"""
 		Looks up the given key to see if there is a token that matches.
-		
+
 		Cleans up any expired tokens in the process.
-		
+
 		Returns None if no token is valid.
 		"""
 		now = utcnow()
@@ -205,5 +204,3 @@ class AuthorisationToken(models.Model):
 			return cls.objects.get(expires__gt=now, key=key)
 		except cls.DoesNotExist:
 			return
-
-

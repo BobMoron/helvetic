@@ -1,50 +1,47 @@
 # -*- mode: python; indent-tabs-mode: nil; tab-width: 2 -*-
-from __future__ import absolute_import
-from django.conf.urls import include, url
+from django.urls import include, re_path
 from .views import aria_api, registration, webui
 
 urlpatterns = [
-  url(
+  re_path(
     r'^scale/register$',
     aria_api.ScaleRegisterView.as_view(),
     name='scaleapi_register'
   ),
 
-  url(
+  re_path(
     r'^scale/upload$',
     aria_api.ScaleUploadView.as_view(),
     name='scaleapi_upload'
   ),
 
-  url(
+  re_path(
     r'^scale/validate$',
     aria_api.ScaleValidateView.as_view(),
     name='scaleapi_validate'
   ),
-  
-  url(
+
+  re_path(
     r'^scales/$',
     webui.ScaleListView.as_view(),
     name='scale_list'
   ),
-  
-  url(
+
+  re_path(
     r'^scales/register/$',
     registration.RegistrationView.as_view(),
     name='register_index'
   ),
 
-  url(
+  re_path(
     r'^scales/register/curl$',
     registration.CurlRegistrationView.as_view(),
     name='register_curl'
   ),
 
-  url(
+  re_path(
     r'^$',
     webui.IndexView.as_view(),
     name='index'
   ),
-
-  #url(r'^$', 'helvetic.views.home', name='home'),
 ]

@@ -3,3 +3,5 @@ env
 *.py[co]
 *.sqlite3
 firmware/
+/**/bash.exe.stackdump
+/.idea/*

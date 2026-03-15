@@ -18,12 +18,11 @@ class CurlRegistrationView(LoginRequiredMixin, TemplateView):
   template_name = 'helvetic/registration/register_curl.html'
   http_method_names = ['post']
 
-	def post(self, request):
-	  # Delete existing tokens for the user.
-	  AuthorisationToken.objects.filter(user=request.user).delete()
-	
-	  # Create a new token
-	  auth_token, _ = AuthorisationToken.objects.get_or_create(user=request.user)
-	  
-	  return self.render_to_response(dict(auth_token=auth_token))
-	
+  def post(self, request):
+    # Delete existing tokens for the user.
+    AuthorisationToken.objects.filter(user=request.user).delete()
+
+    # Create a new token
+    auth_token, _ = AuthorisationToken.objects.get_or_create(user=request.user)
+
+    return self.render_to_response(dict(auth_token=auth_token))
