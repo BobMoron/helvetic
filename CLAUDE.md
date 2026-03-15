@@ -32,13 +32,20 @@ PYTHONPATH=.. ../env/Scripts/python manage.py createsuperuser
 PYTHONPATH=.. ../env/Scripts/python manage.py test helvetic
 ```
 
-Test server (simulates an Aria scale for development):
+Test server (lightweight stand-in for the FitBit cloud API — point a real Aria scale at it via DNS spoof to observe raw protocol traffic):
 ```bash
-python testserver/testserver.py [host] [port]
+# Install testserver dependencies (separate from the main app)
+env/Scripts/pip install -r testserver/requirements.txt
+
+env/Scripts/python testserver/testserver.py <host> <port>
+# Must listen on port 80 so the scale can reach it
+# e.g.: env/Scripts/python testserver/testserver.py 0.0.0.0 80
 # or via Docker:
 docker build -t helvetictest testserver/
-docker run -p 8000:8000 -it helvetictest
+docker run -p 80:8000 -it helvetictest
 ```
+
+Decoded measurements are logged to stdout. Visit `http://localhost/` for config and recent log.
 
 ## Deployment / DNS Spoofing
 
@@ -96,7 +103,7 @@ The scale sends binary-packed structs; responses are also binary. See `protocol.
 
 **`helvetic/views/webui.py`** — Human-facing views (all login-required): index, scale list, registration UI and curl instructions.
 
-**`testserver/testserver.py`** — Standalone bottle.py server that mimics a real Aria scale. Useful for testing the Django app without physical hardware. Configurable via env vars (`HEL_USER`, `HEL_HEIGHT`, etc.).
+**`testserver/testserver.py`** — Standalone bottle.py server implementing the same FitBit cloud API as Helvetic. Useful for protocol exploration: point a real Aria scale at it (via DNS spoof) to observe decoded measurements without the full Django stack. Logs to stdout; status page at `/`. Configurable via env vars (`HEL_USER`, `HEL_HEIGHT`, etc.).
 
 ### Protocol Notes
 

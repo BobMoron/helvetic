@@ -124,16 +124,23 @@ PYTHONPATH=.. ../env/Scripts/python manage.py test helvetic
 # 135 tests, ~1s
 ```
 
-**Test server** (simulates an Aria scale — no physical hardware needed):
+**Test server** (lightweight stand-in for the FitBit cloud API, for protocol exploration):
+
+Point a real Aria scale at it via DNS spoof (same setup as Helvetic). It decodes and logs measurements to stdout without the full Django stack. Visit `http://localhost/` for config and recent log.
+
 ```bash
-python testserver/testserver.py [host] [port]
+# Install testserver dependencies (separate from the main app)
+env/Scripts/pip install -r testserver/requirements.txt
+
+# Must listen on port 80 so the scale can reach it
+env/Scripts/python testserver/testserver.py 0.0.0.0 80
 
 # or via Docker:
 docker build -t helvetictest testserver/
-docker run -p 8000:8000 -it helvetictest
+docker run -p 80:8000 -it helvetictest
 ```
 
-Configure the test server with env vars: `HEL_USER`, `HEL_HEIGHT`, etc.
+Configure via env vars: `HEL_USER`, `HEL_HEIGHT`, `HEL_BIRTHYEAR`, `HEL_GENDER`, `HEL_MIN_TOLERANCE`, `HEL_MAX_TOLERANCE`.
 
 ---
 
