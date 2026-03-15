@@ -390,3 +390,270 @@ class RegistrationViewTest(TestCase):
         self.client.login(username='testuser', password='testpass')
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 200)
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: Profile management
+# ---------------------------------------------------------------------------
+
+class ProfileViewTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.user = make_user()
+        self.url = reverse('profile')
+
+    def test_unauthenticated_redirects_to_login(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/accounts/login', resp['Location'])
+
+    def test_no_profile_redirects_to_edit(self):
+        self.client.login(username='testuser', password='testpass')
+        resp = self.client.get(self.url)
+        self.assertRedirects(resp, reverse('profile_edit'))
+
+    def test_with_profile_returns_200(self):
+        make_profile(self.user)
+        self.client.login(username='testuser', password='testpass')
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Alice')
+
+
+class ProfileEditViewTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.user = make_user()
+        self.url = reverse('profile_edit')
+        self.valid_data = {
+            'short_name': 'Alice',
+            'birth_date': '1990-06-15',
+            'height_cm': 170,
+            'gender': UserProfile.FEMALE,
+        }
+
+    def test_unauthenticated_redirects_to_login(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/accounts/login', resp['Location'])
+
+    def test_get_returns_200(self):
+        self.client.login(username='testuser', password='testpass')
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_post_creates_profile(self):
+        self.client.login(username='testuser', password='testpass')
+        resp = self.client.post(self.url, self.valid_data)
+        self.assertRedirects(resp, reverse('profile'))
+        profile = UserProfile.objects.get(user=self.user)
+        self.assertEqual(profile.short_name, 'Alice')
+        self.assertEqual(profile.height, 1700)
+
+    def test_post_updates_existing_profile(self):
+        make_profile(self.user, short_name='OldName', height=1600)
+        self.client.login(username='testuser', password='testpass')
+        self.client.post(self.url, self.valid_data)
+        profile = UserProfile.objects.get(user=self.user)
+        self.assertEqual(profile.short_name, 'Alice')
+        self.assertEqual(profile.height, 1700)
+        self.assertEqual(UserProfile.objects.filter(user=self.user).count(), 1)
+
+    def test_invalid_short_name_rerenders_form(self):
+        self.client.login(username='testuser', password='testpass')
+        data = {**self.valid_data, 'short_name': 'Alice!@#'}
+        resp = self.client.post(self.url, data)
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(UserProfile.objects.filter(user=self.user).exists())
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: CSV export
+# ---------------------------------------------------------------------------
+
+class MeasurementExportViewTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.user = make_user()
+        self.owner = make_user(username='owner')
+        self.scale = make_scale(self.owner)
+        self.url = reverse('measurement_export')
+
+    def test_unauthenticated_redirects_to_login(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/accounts/login', resp['Location'])
+
+    def test_empty_export_returns_header_only(self):
+        self.client.login(username='testuser', password='testpass')
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'text/csv')
+        lines = resp.content.decode().strip().splitlines()
+        self.assertEqual(lines, ['date,weight_kg,body_fat_pct'])
+
+    def test_export_with_data_contains_correct_values(self):
+        when = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        Measurement.objects.create(
+            user=self.user, scale=self.scale,
+            when=when, weight=70500, body_fat=Decimal('18.250'))
+        self.client.login(username='testuser', password='testpass')
+        resp = self.client.get(self.url)
+        content = resp.content.decode()
+        self.assertIn('70.5', content)
+        self.assertIn('18.250', content)
+        self.assertIn('2026-01-15', content)
+
+    def test_export_only_includes_own_measurements(self):
+        other = make_user(username='other')
+        Measurement.objects.create(
+            user=other, scale=self.scale,
+            when=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            weight=80000)
+        self.client.login(username='testuser', password='testpass')
+        resp = self.client.get(self.url)
+        lines = resp.content.decode().strip().splitlines()
+        self.assertEqual(len(lines), 1)  # header only
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Measurement list + graph + data
+# ---------------------------------------------------------------------------
+
+class MeasurementListViewTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.user = make_user()
+        self.url = reverse('measurement_list')
+
+    def test_unauthenticated_redirects_to_login(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/accounts/login', resp['Location'])
+
+    def test_authenticated_empty_returns_200(self):
+        self.client.login(username='testuser', password='testpass')
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+
+
+class MeasurementGraphViewTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.user = make_user()
+        self.url = reverse('measurement_graph')
+
+    def test_unauthenticated_redirects_to_login(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/accounts/login', resp['Location'])
+
+    def test_authenticated_returns_200(self):
+        self.client.login(username='testuser', password='testpass')
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+
+
+class MeasurementDataViewTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.user = make_user()
+        self.owner = make_user(username='owner')
+        self.scale = make_scale(self.owner)
+        self.url = reverse('measurement_data')
+
+    def test_unauthenticated_redirects_to_login(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 302)
+
+    def test_empty_returns_correct_json_structure(self):
+        self.client.login(username='testuser', password='testpass')
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn('labels', data)
+        self.assertIn('weight', data)
+        self.assertIn('body_fat', data)
+        self.assertEqual(data['labels'], [])
+
+    def test_weight_converted_to_kg(self):
+        Measurement.objects.create(
+            user=self.user, scale=self.scale,
+            when=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            weight=70500)
+        self.client.login(username='testuser', password='testpass')
+        data = self.client.get(self.url).json()
+        self.assertEqual(data['weight'], [70.5])
+
+    def test_null_body_fat_included_as_none(self):
+        Measurement.objects.create(
+            user=self.user, scale=self.scale,
+            when=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            weight=70000, body_fat=None)
+        self.client.login(username='testuser', password='testpass')
+        data = self.client.get(self.url).json()
+        self.assertIsNone(data['body_fat'][0])
+
+    def test_only_own_measurements_returned(self):
+        other = make_user(username='other')
+        Measurement.objects.create(
+            user=other, scale=self.scale,
+            when=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            weight=80000)
+        self.client.login(username='testuser', password='testpass')
+        data = self.client.get(self.url).json()
+        self.assertEqual(data['labels'], [])
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Scale edit
+# ---------------------------------------------------------------------------
+
+class ScaleEditViewTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        self.owner = make_user(username='owner')
+        self.other = make_user(username='other')
+        self.scale = make_scale(self.owner)
+        self.url = reverse('scale_edit', args=[self.scale.pk])
+
+    def test_unauthenticated_redirects_to_login(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/accounts/login', resp['Location'])
+
+    def test_non_owner_gets_403(self):
+        self.client.login(username='other', password='testpass')
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_owner_gets_200(self):
+        self.client.login(username='owner', password='testpass')
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_valid_post_updates_unit(self):
+        self.client.login(username='owner', password='testpass')
+        self.client.post(self.url, {'unit': Scale.POUNDS, 'users': []})
+        self.scale.refresh_from_db()
+        self.assertEqual(self.scale.unit, Scale.POUNDS)
+
+    def test_valid_post_assigns_user_profile(self):
+        profile = make_profile(self.owner)
+        self.client.login(username='owner', password='testpass')
+        self.client.post(self.url, {'unit': Scale.KILOGRAMS, 'users': [profile.pk]})
+        self.assertIn(profile, self.scale.users.all())
+
+    def test_cannot_assign_other_users_profile(self):
+        other_profile = make_profile(self.other, short_name='Other')
+        self.client.login(username='owner', password='testpass')
+        resp = self.client.post(self.url, {'unit': Scale.KILOGRAMS, 'users': [other_profile.pk]})
+        self.assertEqual(resp.status_code, 200)  # form error, not redirect
+        self.assertNotIn(other_profile, self.scale.users.all())
