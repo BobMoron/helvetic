@@ -27,6 +27,8 @@ Implement the missing user-facing features of helvetic in four phases, ordered b
 
 ## Phase 1 — Profile Management + CSV Export
 
+**Status: implemented.**
+
 ### Profile Management UI
 
 **New files:**
@@ -66,6 +68,8 @@ Columns: `date` (ISO 8601), `weight_kg` (3dp), `body_fat_pct`
 ---
 
 ## Phase 2 — Graphs + Scale Configuration
+
+**Status: implemented.**
 
 ### Measurement Graphs
 
@@ -118,7 +122,22 @@ Columns: `date` (ISO 8601), `weight_kg` (3dp), `body_fat_pct`
 
 ## Phase 3 — User Management
 
-**Decision: skipped.** The deployment has only 2 users; the Django admin (`/admin/`) covers all user management needs without additional code.
+**Status: implemented** (reversed earlier "skip" decision).
+
+Staff-only views at `/users/`, `/users/create/`, `/users/<pk>/deactivate/`. Access gated by `StaffRequiredMixin` (`is_staff`). Deactivating your own account is blocked server-side (`PermissionDenied`).
+
+**New files:**
+| File | Purpose |
+|------|---------|
+| `helvetic/views/usermgmt.py` | `StaffRequiredMixin`, `UserListView`, `UserCreateView`, `UserDeactivateView` |
+| `helvetic/templates/helvetic/user_list.html` | Table of all users with active status and deactivate button |
+| `helvetic/templates/helvetic/user_create.html` | Form: username, password, is_staff checkbox |
+
+**Modified files:**
+| File | Change |
+|------|--------|
+| `helvetic/forms.py` | Add `UserCreateForm`: `clean_username` checks uniqueness; `save()` calls `create_user` + `set_password` |
+| `helvetic/urls.py` | Add `/users/`, `/users/create/`, `/users/<int:pk>/deactivate/` |
 
 ---
 
@@ -126,7 +145,7 @@ Columns: `date` (ISO 8601), `weight_kg` (3dp), `body_fat_pct`
 
 Browser-initiated AP config is not viable: `fetch()` cannot set `Cookie` on foreign origins, and the server is not on the scale's network. The existing curl flow is correct; only the UX needs improvement.
 
-**Status: implemented.** 68 tests passing.
+**Status: implemented.**
 
 **Modified files:**
 | File | Change |
@@ -149,6 +168,16 @@ Browser-initiated AP config is not viable: `fetch()` cannot set `Cookie` on fore
 
 ---
 
+---
+
+## CSV Import (post-roadmap addition)
+
+**Status: implemented.** See `docs/plans/data-import.md` for full spec.
+
+Pluggable importer package at `helvetic/importers/`. Supports helvetic CSV (exact round-trip) and Fitbit weight export (kg or lbs). Auto-detection via header sniffing; explicit format override available. Duplicates silently skipped. No model changes, no migration.
+
+---
+
 ## Data Model Changes
 
 | Phase | Change | Migration |
@@ -163,14 +192,16 @@ Browser-initiated AP config is not viable: `fetch()` cannot set `Cookie` on fore
 
 ## Test Plan
 
-Tests live in `helvetic/tests.py` (68 tests, all passing as of Phase 4).
+Tests live in `helvetic/tests.py` (135 tests, all passing).
 
 Coverage by phase:
 - **Pre-existing:** `AuthorisationTokenLookupTest`, `UserProfileAgeTest`, `UserProfileShortNameFormattedTest`, `UserProfileLatestMeasurementTest`, `ScaleUploadViewTest`, `ScaleRegisterViewTest`, `ScaleValidateViewTest`, `IndexViewTest`, `ScaleListViewTest`, `RegistrationViewTest`
 - **Phase 1:** `ProfileViewTest`, `ProfileEditViewTest`, `MeasurementExportViewTest`
 - **Phase 2:** `MeasurementListViewTest`, `MeasurementGraphViewTest`, `MeasurementDataViewTest`, `ScaleEditViewTest`
-- **Phase 3:** skipped (Django admin used instead)
-- **Phase 4:** `RegistrationStatusViewTest` (5 cases: unauthenticated redirect, no new scale, new scale → redirect, session cleared, existing scale not triggering redirect), `CurlRegistrationViewSessionTest` (2 cases: stores correct count with and without pre-existing scales)
+- **Phase 3:** `UserListViewTest`, `UserCreateViewTest`, `UserDeactivateViewTest`
+- **Phase 4:** `RegistrationStatusViewTest` (5 cases), `CurlRegistrationViewSessionTest` (2 cases)
+- **CSV import:** `HelveticCsvImporterTest`, `FitbitCsvImporterTest`, `RegistryAutodetectTest`, `MeasurementImportViewTest`
+- **Coverage gap fill:** `ScaleListViewIsolationTest`, `MeasurementImportFormCleanTest`, `AdminSmokeTest`, `ModelStrTest`, `StonesUnitTest`, `NullUserMeasurementTest`
 
 Run:
 ```bash

@@ -1,7 +1,7 @@
 # Data Import
 
 ## Status
-Draft
+Implemented
 
 ## Summary
 Allow users to import historical measurement data from CSV files without needing a physical scale present for each reading. This covers the helvetic export format (exact round-trip) and Fitbit's weight export format. The architecture is pluggable — adding a third source (e.g. Garmin, Google Fit) means creating one new module and one import line; nothing else changes.
@@ -71,7 +71,7 @@ No polling endpoint or SSE needed. For personal CSV files this is appropriate; r
 | `helvetic/views/webui.py` | Add `MeasurementImportView(LoginRequiredMixin, View)`: GET renders form; POST parses file, deduplicates with set lookup, `bulk_create`, redirects to `measurement_list` with success message |
 | `helvetic/urls.py` | Add `re_path(r'^measurements/import/$', ..., name='measurement_import')` |
 | `helvetic/templates/helvetic/measurement_list.html` | Add "Import CSV" button linking to `measurement_import` |
-| `helvetic/tests.py` | ~30 new tests (see test plan) |
+| `helvetic/tests.py` | 25 new tests (see test plan) |
 
 ## Data model / API changes
 
