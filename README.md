@@ -121,7 +121,7 @@ address=/aria.fitbit.com/192.168.1.x
 ```bash
 cd helv_test
 PYTHONPATH=.. ../env/Scripts/python manage.py test helvetic
-# 135 tests, ~1s
+# 148 tests, ~1s
 ```
 
 **Test server** (lightweight stand-in for the FitBit cloud API, for protocol exploration):
@@ -141,6 +141,37 @@ docker run -p 80:8000 -it helvetictest
 ```
 
 Configure via env vars: `HEL_USER`, `HEL_HEIGHT`, `HEL_BIRTHYEAR`, `HEL_GENDER`, `HEL_MIN_TOLERANCE`, `HEL_MAX_TOLERANCE`.
+
+**Scale client** (Aria scale simulator — validates DNS spoof end-to-end without a physical scale):
+
+Sends one valid Aria v3 upload to `aria.fitbit.com` (or a specified host). With DNS correctly spoofed, the request reaches your local Helvetic instance. The scale must already exist in the database.
+
+```bash
+# Requires the testserver dependencies (crcmod)
+env/Scripts/pip install -r testserver/requirements.txt
+
+env/Scripts/python testserver/scaleclient.py \
+    --mac AABBCCDDEEFF \
+    --auth <32-hex-auth-code> \
+    --weight 80000
+
+# Override target for local testing (bypasses DNS spoof):
+env/Scripts/python testserver/scaleclient.py \
+    --host localhost --port 8000 \
+    --mac AABBCCDDEEFF --auth <32-hex> --weight 80000
+```
+
+| Option | Env var | Default | Description |
+|--------|---------|---------|-------------|
+| `--host` | `HEL_HOST` | `aria.fitbit.com` | Target hostname |
+| `--port` | `HEL_PORT` | `80` | Target port |
+| `--mac` | `HEL_MAC` | *(required)* | Scale MAC, 12 hex chars, no colons |
+| `--auth` | `HEL_AUTH_CODE` | *(required)* | Auth code, 32 hex chars |
+| `--weight` | `HEL_WEIGHT` | `80000` | Weight in grams |
+| `--user-id` | `HEL_USER_ID` | `1` | User slot 1–8 |
+| `--body-fat` | `HEL_BODY_FAT` | `0.0` | Body fat % |
+| `--battery` | `HEL_BATTERY` | `80` | Battery % |
+| `--firmware` | `HEL_FIRMWARE` | `0` | Firmware version |
 
 ---
 

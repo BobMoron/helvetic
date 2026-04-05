@@ -47,6 +47,13 @@ docker run -p 80:8000 -it helvetictest
 
 Decoded measurements are logged to stdout. Visit `http://localhost/` for config and recent log.
 
+Scale client (Aria scale simulator — sends one upload to validate DNS spoof end-to-end; scale must exist in DB):
+```bash
+env/Scripts/python testserver/scaleclient.py --mac AABBCCDDEEFF --auth <32-hex> --weight 80000
+# Override target (skip DNS spoof):
+env/Scripts/python testserver/scaleclient.py --host localhost --port 8000 --mac ... --auth ...
+```
+
 ## Deployment / DNS Spoofing
 
 The Aria scale contacts `aria.fitbit.com` — you must redirect that hostname to your server. The scale uses port 80 (not configurable), so helvetic must listen on port 80.
