@@ -17,29 +17,30 @@ All Django commands run from `helv_test/` using the venv:
 
 ```bash
 # First-time setup
-python -m venv env
-env/Scripts/pip install -r requirements.txt
+python3 -m venv env
+env/bin/pip install -r requirements.txt
 
 # Run the server (must be on port 80 for the scale to reach it)
 cd helv_test
-PYTHONPATH=/c/Users/bla/git/helvetic ../env/Scripts/python manage.py runserver 0.0.0.0:80
+PYTHONPATH=.. ../env/bin/python manage.py runserver 0.0.0.0:80
 
 # Database / admin
-PYTHONPATH=.. ../env/Scripts/python manage.py migrate
-PYTHONPATH=.. ../env/Scripts/python manage.py createsuperuser
+PYTHONPATH=.. ../env/bin/python manage.py migrate
+PYTHONPATH=.. ../env/bin/python manage.py createsuperuser
 
 # Tests
-PYTHONPATH=.. ../env/Scripts/python manage.py test helvetic
+PYTHONPATH=.. ../env/bin/python manage.py test helvetic
 ```
 
 Test server (lightweight stand-in for the FitBit cloud API — point a real Aria scale at it via DNS spoof to observe raw protocol traffic):
 ```bash
 # Install testserver dependencies (separate from the main app)
-env/Scripts/pip install -r testserver/requirements.txt
+python3 -m venv testserver/env
+testserver/env/bin/pip install -r testserver/requirements.txt
 
-env/Scripts/python testserver/testserver.py <host> <port>
+env/bin/python testserver/testserver.py <host> <port>
 # Must listen on port 80 so the scale can reach it
-# e.g.: env/Scripts/python testserver/testserver.py 0.0.0.0 80
+# e.g.: env/bin/python testserver/testserver.py 0.0.0.0 80
 # or via Docker:
 docker build -t helvetictest testserver/
 docker run -p 80:8000 -it helvetictest
@@ -49,9 +50,9 @@ Decoded measurements are logged to stdout. Visit `http://localhost/` for config 
 
 Scale client (Aria scale simulator — sends one upload to validate DNS spoof end-to-end; scale must exist in DB):
 ```bash
-env/Scripts/python testserver/scaleclient.py --mac AABBCCDDEEFF --auth <32-hex> --weight 80000
+env/bin/python testserver/scaleclient.py --mac AABBCCDDEEFF --auth <32-hex> --weight 80000
 # Override target (skip DNS spoof):
-env/Scripts/python testserver/scaleclient.py --host localhost --port 8000 --mac ... --auth ...
+env/bin/python testserver/scaleclient.py --host localhost --port 8000 --mac ... --auth ...
 ```
 
 ## Deployment / DNS Spoofing
