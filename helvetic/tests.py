@@ -13,6 +13,7 @@ from .importers.helvetic_csv import HelveticCsvImporter
 from .importers.fitbit_csv import FitbitCsvImporter
 from .importers.registry import registry
 from .models import AuthorisationToken, Measurement, Scale, UserProfile, utcnow
+from testserver.scaleclient import build_request, parse_response, _USER_SIZE, crc16xmodem as _crc16fn
 
 
 # ---------------------------------------------------------------------------
@@ -1317,3 +1318,150 @@ class NullUserMeasurementTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         measurement = Measurement.objects.get(scale=self.scale, weight=75000)
         self.assertIsNone(measurement.user)
+
+
+# ---------------------------------------------------------------------------
+# scaleclient unit tests
+# ---------------------------------------------------------------------------
+
+def _make_response(ts=1234567890, units=2, status=0x32, users=()):
+    """Build a minimal valid Aria v3 upload response binary."""
+    body = struct.pack('<LBBBL', ts, units, status, 0x01, len(users))
+    for u in users:
+        name_bytes = u['name'][:20].upper().encode('ascii').ljust(20)
+        body += struct.pack(
+            '<L16x20sLLLBLLLLLL',
+            u['user_id'], name_bytes,
+            u.get('min_w', 0), u.get('max_w', 0),
+            u.get('age', 30), u.get('gender', 0x34),
+            u.get('height', 1700),
+            0, 0, 0, 0, 0,
+        )
+    body += struct.pack('<LLL', 0, 3, 0)
+    trailer = 0x19 + len(users) * 0x4d
+    return body + struct.pack('<HH', _crc16fn(body), trailer)
+
+
+class ScaleClientRequestPackTest(TestCase):
+
+    def test_correct_total_length(self):
+        req = build_request('AABBCCDDEEFF', 'A' * 32, weight_g=80000)
+        # header(30) + body(16) + measurement(32) + crc(2) = 80
+        self.assertEqual(len(req), 80)
+
+    def test_proto_version_is_3(self):
+        req = build_request('AABBCCDDEEFF', 'A' * 32, weight_g=80000)
+        proto_ver = struct.unpack('<L', req[:4])[0]
+        self.assertEqual(proto_ver, 3)
+
+    def test_measurement_count_is_1(self):
+        req = build_request('AABBCCDDEEFF', 'A' * 32, weight_g=80000)
+        # header=30, then body: fw_ver(4) + unknown2(4) + ts(4) + count(4)
+        count = struct.unpack('<L', req[30 + 12:30 + 16])[0]
+        self.assertEqual(count, 1)
+
+    def test_crc_validates(self):
+        from crcmod.predefined import mkCrcFun
+        crc_fn = mkCrcFun('xmodem')
+        req = build_request('AABBCCDDEEFF', 'A' * 32, weight_g=80000)
+        body_and_meas = req[30:-2]   # bytes covered by CRC per plan
+        stored_crc = struct.unpack('<H', req[-2:])[0]
+        self.assertEqual(crc_fn(body_and_meas), stored_crc)
+
+    def test_body_fat_encoding(self):
+        req = build_request('AABBCCDDEEFF', 'A' * 32, weight_g=80000,
+                            body_fat=20.5)
+        # measurement starts at byte 46 (30 header + 16 body)
+        _, _, _, _, _, fat1, covar, fat2 = struct.unpack('<LLLLLLLL', req[46:78])
+        self.assertEqual(fat1, 20500)
+        self.assertEqual(fat2, 20500)
+        self.assertEqual(covar, 0)
+
+    def test_unknown2_is_33(self):
+        req = build_request('AABBCCDDEEFF', 'A' * 32, weight_g=80000)
+        # body starts at 30; unknown2 is second field (offset +4)
+        unknown2 = struct.unpack('<L', req[34:38])[0]
+        self.assertEqual(unknown2, 33)
+
+
+class ScaleClientResponseParseTest(TestCase):
+
+    def test_parse_zero_users(self):
+        data = _make_response(ts=1000, units=2, status=0x32, users=[])
+        result = parse_response(data)
+        self.assertEqual(result['ts'], 1000)
+        self.assertEqual(result['units'], 'kilograms')
+        self.assertEqual(result['status'], '0x32')
+        self.assertEqual(result['users'], [])
+
+    def test_parse_one_user(self):
+        data = _make_response(ts=9999, units=1, status=0x32, users=[{
+            'user_id': 7, 'name': 'Bob', 'min_w': 70000, 'max_w': 78000,
+            'age': 40, 'gender': 0x02, 'height': 1800,
+        }])
+        result = parse_response(data)
+        self.assertEqual(result['units'], 'stone')
+        self.assertEqual(len(result['users']), 1)
+        u = result['users'][0]
+        self.assertEqual(u['user_id'], 7)
+        self.assertEqual(u['name'], 'BOB')
+        self.assertEqual(u['age'], 40)
+        self.assertEqual(u['gender'], 'male')
+        self.assertEqual(u['height_mm'], 1800)
+        self.assertEqual(u['min_weight_g'], 70000)
+        self.assertEqual(u['max_weight_g'], 78000)
+
+    def test_crc_mismatch_raises(self):
+        data = bytearray(_make_response())
+        data[-4] ^= 0xFF  # corrupt the CRC byte
+        with self.assertRaises(ValueError):
+            parse_response(bytes(data))
+
+    def test_too_short_raises(self):
+        with self.assertRaises(ValueError):
+            parse_response(b'\x00' * 10)
+
+    def test_user_size_constant(self):
+        self.assertEqual(_USER_SIZE, 77)
+
+
+class ScaleClientIntegrationTest(TestCase):
+
+    MAC = 'AABBCCDDEEFF'
+    AUTH = 'D' * 32
+
+    def setUp(self):
+        self.client = Client()
+        self.owner = make_user(username='scaleowner')
+        self.scale = make_scale(self.owner, hw_address=self.MAC, auth_code=self.AUTH)
+        self.profile = make_profile(self.owner)
+        self.scale.users.add(self.profile)
+
+    @patch('helvetic.views.aria_api.crc16xmodem', return_value=0x0000)
+    def test_build_request_posts_200_and_creates_measurement(self, _mock_crc):
+        payload = build_request(
+            mac_hex=self.MAC,
+            auth_hex=self.AUTH,
+            weight_g=82500,
+            user_id=self.owner.id,
+            body_fat=18.0,
+        )
+        resp = self.client.post(
+            reverse('scaleapi_upload'), data=payload,
+            content_type='application/octet-stream')
+        self.assertEqual(resp.status_code, 200)
+        m = Measurement.objects.get(scale=self.scale, weight=82500)
+        self.assertAlmostEqual(float(m.body_fat), 18.0)
+
+    def test_parse_response_round_trip(self):
+        # Build a response the same way the server would, using _make_response,
+        # and verify parse_response recovers the expected fields.
+        data = _make_response(ts=5000, units=2, status=0x32, users=[{
+            'user_id': self.owner.id, 'name': self.profile.short_name,
+            'min_w': 78000, 'max_w': 86000, 'age': 35,
+            'gender': UserProfile.FEMALE, 'height': 1700,
+        }])
+        result = parse_response(data)
+        self.assertEqual(result['units'], 'kilograms')
+        self.assertEqual(len(result['users']), 1)
+        self.assertEqual(result['users'][0]['name'], 'ALICE')

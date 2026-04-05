@@ -1,3 +1,4 @@
 crc16
+crcmod
 python-dateutil
 Django>=4.2

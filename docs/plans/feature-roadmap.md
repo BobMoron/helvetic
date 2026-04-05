@@ -192,7 +192,7 @@ Pluggable importer package at `helvetic/importers/`. Supports helvetic CSV (exac
 
 ## Test Plan
 
-Tests live in `helvetic/tests.py` (135 tests, all passing).
+Tests live in `helvetic/tests.py` (148 tests, all passing).
 
 Coverage by phase:
 - **Pre-existing:** `AuthorisationTokenLookupTest`, `UserProfileAgeTest`, `UserProfileShortNameFormattedTest`, `UserProfileLatestMeasurementTest`, `ScaleUploadViewTest`, `ScaleRegisterViewTest`, `ScaleValidateViewTest`, `IndexViewTest`, `ScaleListViewTest`, `RegistrationViewTest`
@@ -201,6 +201,7 @@ Coverage by phase:
 - **Phase 3:** `UserListViewTest`, `UserCreateViewTest`, `UserDeactivateViewTest`
 - **Phase 4:** `RegistrationStatusViewTest` (5 cases), `CurlRegistrationViewSessionTest` (2 cases)
 - **CSV import:** `HelveticCsvImporterTest`, `FitbitCsvImporterTest`, `RegistryAutodetectTest`, `MeasurementImportViewTest`
+- **Scale client (post-roadmap):** `ScaleClientRequestPackTest`, `ScaleClientResponseParseTest`, `ScaleClientIntegrationTest`
 - **Coverage gap fill:** `ScaleListViewIsolationTest`, `MeasurementImportFormCleanTest`, `AdminSmokeTest`, `ModelStrTest`, `StonesUnitTest`, `NullUserMeasurementTest`
 
 Run:
